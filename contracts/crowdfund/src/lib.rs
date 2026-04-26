@@ -781,6 +781,67 @@ impl CrowdfundContract {
         Ok(())
     }
 
+    // ── NFT Receipts ──────────────────────────────────────────────────────────
+
+    /// Sets the NFT contract address for contribution receipts.
+    ///
+    /// Only the creator can set the NFT contract.
+    ///
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    /// * `nft_contract` - Address of the NFT contract
+    ///
+    /// # Returns
+    /// * `Ok(())` on success
+    pub fn set_nft_contract(env: Env, nft_contract: Address) -> Result<(), ContractError> {
+        let creator: Address = env.storage().instance().get(&KEY_CREATOR).unwrap();
+        creator.require_auth();
+
+        env.storage().instance().set(&DataKey::NFTContract, &nft_contract);
+        env.events().publish(("campaign", "nft_contract_set"), ());
+        Ok(())
+    }
+
+    /// Retrieves the NFT contract address if set.
+    ///
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    ///
+    /// # Returns
+    /// Optional NFT contract address
+    pub fn get_nft_contract(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::NFTContract)
+    }
+
+    /// Records an NFT receipt for a contributor.
+    ///
+    /// Called internally when minting NFT receipts for contributions.
+    ///
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    /// * `contributor` - Contributor address
+    /// * `token_id` - NFT token ID
+    ///
+    /// # Returns
+    /// * `Ok(())` on success
+    pub fn record_nft_receipt(env: Env, contributor: Address, token_id: i128) -> Result<(), ContractError> {
+        env.storage().persistent().set(&DataKey::ContributorNFT(contributor.clone()), &token_id);
+        env.storage().persistent().extend_ttl(&DataKey::ContributorNFT(contributor), 100, 100);
+        Ok(())
+    }
+
+    /// Retrieves the NFT token ID for a contributor.
+    ///
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    /// * `contributor` - Contributor address
+    ///
+    /// # Returns
+    /// Optional NFT token ID
+    pub fn get_contributor_nft(env: Env, contributor: Address) -> Option<i128> {
+        env.storage().persistent().get(&DataKey::ContributorNFT(contributor))
+    }
+
     // ── View functions ────────────────────────────────────────────────────────
 
     /// Returns the total amount raised so far in stroops.

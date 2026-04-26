@@ -143,4 +143,8 @@ pub enum DataKey {
     MatchingConfig,
     /// Total matched amount
     TotalMatched,
+    /// NFT contract address for receipts
+    NFTContract,
+    /// NFT token ID for a contributor
+    ContributorNFT(Address),
 }
