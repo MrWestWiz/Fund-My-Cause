@@ -8,6 +8,8 @@ import { ReactQueryProvider } from "@/context/ReactQueryProvider";
 import { PageTransition } from "@/components/layout/PageTransition";
 import { ComparisonProvider } from "@/context/ComparisonContext";
 import { BookmarkProvider } from "@/context/BookmarkContext";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ErrorHandlerInitializer } from "@/components/ErrorHandlerInitializer";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages } from "next-intl/server";
 import { rtlLocales, type Locale } from "@/i18n/config";
@@ -38,19 +40,22 @@ export default async function LocaleLayout({
   return (
     <html lang={locale} dir={dir} className="dark">
       <body>
-        <NextIntlClientProvider messages={messages}>
-          <ThemeProvider>
-            <ToastProvider>
-              <NotificationProvider>
-                <ComparisonProvider>
-                  <BookmarkProvider>
-                    <WalletProvider>{children}</WalletProvider>
-                  </BookmarkProvider>
-                </ComparisonProvider>
-              </NotificationProvider>
-            </ToastProvider>
-          </ThemeProvider>
-        </NextIntlClientProvider>
+        <ErrorBoundary level="page">
+          <ErrorHandlerInitializer />
+          <NextIntlClientProvider messages={messages}>
+            <ThemeProvider>
+              <ToastProvider>
+                <NotificationProvider>
+                  <ComparisonProvider>
+                    <BookmarkProvider>
+                      <WalletProvider>{children}</WalletProvider>
+                    </BookmarkProvider>
+                  </ComparisonProvider>
+                </NotificationProvider>
+              </ToastProvider>
+            </ThemeProvider>
+          </NextIntlClientProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

@@ -16,14 +16,16 @@
     "prepare": "husky"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.5.2",
+    "@commitlint/config-conventional": "^20.5.0",
     "@playwright/test": "^1.58.2",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "prettier": "^3.8.3"
   },
   "lint-staged": {
-    "*.{ts,tsx}": [
-      "eslint --max-warnings=0",
+    "apps/interface/**/*.{ts,tsx}": [
+      "eslint --config apps/interface/eslint.config.js --max-warnings=0",
       "prettier --write"
     ],
     "*.rs": [

@@ -1,0 +1,245 @@
+/**
+ * Utility and hook types for Fund-My-Cause
+ * Type definitions for utilities, hooks, and helper functions
+ */
+
+import type { Campaign } from "./campaign";
+import type { ContributionResponse, TransactionResponse } from "./api";
+
+/**
+ * Wallet context type
+ */
+export interface WalletContextType {
+  address: string | null;
+  isConnected: boolean;
+  isLoading: boolean;
+  error: Error | null;
+  connect: () => Promise<void>;
+  disconnect: () => void;
+  signTransaction: (xdr: string) => Promise<string>;
+}
+
+/**
+ * Theme context type
+ */
+export interface ThemeContextType {
+  isDark: boolean;
+  toggleTheme: () => void;
+}
+
+/**
+ * Notification context type
+ */
+export interface NotificationContextType {
+  notifications: Notification[];
+  addNotification: (notification: Omit<Notification, "id" | "createdAt">) => void;
+  removeNotification: (id: string) => void;
+  markAsRead: (id: string) => void;
+}
+
+/**
+ * Bookmark context type
+ */
+export interface BookmarkContextType {
+  bookmarks: string[];
+  isBookmarked: (campaignId: string) => boolean;
+  addBookmark: (campaignId: string) => void;
+  removeBookmark: (campaignId: string) => void;
+}
+
+/**
+ * Comparison context type
+ */
+export interface ComparisonContextType {
+  selectedCampaigns: Campaign[];
+  addToComparison: (campaign: Campaign) => void;
+  removeFromComparison: (campaignId: string) => void;
+  clearComparison: () => void;
+}
+
+/**
+ * Hook return type for campaign data
+ */
+export interface UseCampaignReturn {
+  campaign: Campaign | null;
+  isLoading: boolean;
+  error: Error | null;
+  refetch: () => Promise<void>;
+}
+
+/**
+ * Hook return type for campaign list
+ */
+export interface UseCampaignsReturn {
+  campaigns: Campaign[];
+  isLoading: boolean;
+  error: Error | null;
+  hasMore: boolean;
+  loadMore: () => Promise<void>;
+  refetch: () => Promise<void>;
+}
+
+/**
+ * Hook return type for wallet balance
+ */
+export interface UseWalletBalanceReturn {
+  xlmBalance: number;
+  tokenBalances: Record<string, number>;
+  isLoading: boolean;
+  error: Error | null;
+  refetch: () => Promise<void>;
+}
+
+/**
+ * Hook return type for contributions
+ */
+export interface UseContributionsReturn {
+  contributions: ContributionResponse[];
+  isLoading: boolean;
+  error: Error | null;
+  contribute: (campaignId: string, amount: number) => Promise<void>;
+}
+
+/**
+ * Hook return type for transactions
+ */
+export interface UseTransactionsReturn {
+  transactions: TransactionResponse[];
+  isLoading: boolean;
+  error: Error | null;
+  refetch: () => Promise<void>;
+}
+
+/**
+ * Notification type
+ */
+export interface Notification {
+  id: string;
+  type: "success" | "error" | "info" | "warning";
+  title: string;
+  message: string;
+  duration?: number;
+  read: boolean;
+  createdAt: string;
+}
+
+/**
+ * Error logger type
+ */
+export interface ErrorLog {
+  timestamp: string;
+  message: string;
+  stack?: string;
+  componentStack?: string;
+  url: string;
+  userAgent: string;
+}
+
+/**
+ * Validation result type
+ */
+export interface ValidationResult {
+  isValid: boolean;
+  errors: Record<string, string>;
+}
+
+/**
+ * Form state type
+ */
+export interface FormState<T> {
+  values: T;
+  errors: Record<string, string>;
+  touched: Record<string, boolean>;
+  isSubmitting: boolean;
+  isDirty: boolean;
+}
+
+/**
+ * Async operation state type
+ */
+export interface AsyncState<T> {
+  data: T | null;
+  isLoading: boolean;
+  error: Error | null;
+  isSuccess: boolean;
+}
+
+/**
+ * Pagination state type
+ */
+export interface PaginationState {
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+}
+
+/**
+ * Filter state type
+ */
+export interface FilterState {
+  status?: string;
+  category?: string;
+  minGoal?: number;
+  maxGoal?: number;
+  sortBy?: "recent" | "popular" | "trending" | "ending-soon";
+  searchQuery?: string;
+}
+
+/**
+ * Sort option type
+ */
+export interface SortOption {
+  label: string;
+  value: string;
+  order: "asc" | "desc";
+}
+
+/**
+ * Cache entry type
+ */
+export interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+  ttl: number;
+}
+
+/**
+ * API request config type
+ */
+export interface ApiRequestConfig {
+  method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+  url: string;
+  data?: unknown;
+  headers?: Record<string, string>;
+  timeout?: number;
+  retries?: number;
+}
+
+/**
+ * API response config type
+ */
+export interface ApiResponseConfig<T> {
+  data: T;
+  status: number;
+  headers: Record<string, string>;
+  timestamp: string;
+}
+
+/**
+ * Retry policy type
+ */
+export interface RetryPolicy {
+  maxRetries: number;
+  delayMs: number;
+  backoffMultiplier: number;
+}
+
+/**
+ * Rate limit info type
+ */
+export interface RateLimitInfo {
+  remaining: number;
+  limit: number;
+  resetAt: string;
+}

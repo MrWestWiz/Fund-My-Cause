@@ -1,0 +1,59 @@
+{
+  "name": "@fund-my-cause/components",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./button": {
+      "import": "./dist/Button.js",
+      "types": "./dist/Button.d.ts"
+    },
+    "./input": {
+      "import": "./dist/Input.js",
+      "types": "./dist/Input.d.ts"
+    },
+    "./modal": {
+      "import": "./dist/Modal.js",
+      "types": "./dist/Modal.d.ts"
+    },
+    "./card": {
+      "import": "./dist/Card.js",
+      "types": "./dist/Card.d.ts"
+    },
+    "./progress-bar": {
+      "import": "./dist/ProgressBar.js",
+      "types": "./dist/ProgressBar.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "clsx": "2.1.1",
+    "lucide-react": "0.577.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "tailwind-merge": "3.5.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@testing-library/react": "16.3.2",
+    "@types/node": "20.19.37",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "9.39.4",
+    "typescript": "5.9.3",
+    "vitest": "4.1.2"
+  }
+}
