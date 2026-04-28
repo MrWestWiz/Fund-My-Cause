@@ -10,17 +10,22 @@ import React, {
 } from "react";
 import { getNetworkDetails } from "@stellar/freighter-api";
 import { useToast } from "@/components/ui/Toast";
-import { NETWORK_PASSPHRASE, NETWORK_NAME } from "@/lib/constants";
+import { NETWORK_PASSPHRASE } from "@/lib/constants";
 import { freighterAdapter } from "@/lib/freighterAdapter";
 import { lobstrAdapter } from "@/lib/lobstrAdapter";
 import type { WalletAdapter } from "@/lib/walletAdapters";
 import { useXlmBalance } from "@/hooks/useXlmBalance";
 import { WalletSelectModal } from "@/components/ui/WalletSelectModal";
+import {
+  saveSession,
+  loadSession,
+  clearSession,
+  isNetworkMatch,
+  classifySignError,
+  type WalletType,
+} from "@/services/wallet.service";
 
-const SESSION_KEY = "fmc:wallet_address";
-const SESSION_WALLET_KEY = "fmc:wallet_type";
-
-const ADAPTERS: Record<"freighter" | "lobstr", WalletAdapter> = {
+const ADAPTERS: Record<WalletType, WalletAdapter> = {
   freighter: freighterAdapter,
   lobstr: lobstrAdapter,
 };
@@ -50,7 +55,9 @@ const WalletContext = createContext<WalletContextType | null>(null);
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);
-  const [activeAdapter, setActiveAdapter] = useState<WalletAdapter | null>(null);
+  const [activeAdapter, setActiveAdapter] = useState<WalletAdapter | null>(
+    null,
+  );
   const [isConnecting, setIsConnecting] = useState(false);
   const [isAutoConnecting, setIsAutoConnecting] = useState(true);
   const [isSigning, setIsSigning] = useState(false);
@@ -60,49 +67,52 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [showWalletSelect, setShowWalletSelect] = useState(false);
   const { addToast } = useToast();
 
-  const { balance: xlmBalance, refresh: refreshBalance } = useXlmBalance(address);
+  const { balance: xlmBalance, refresh: refreshBalance } =
+    useXlmBalance(address);
 
   const checkNetwork = useCallback(async () => {
     const result = await getNetworkDetails();
     if (result.error) return;
     setWalletNetwork(result.network);
-    setNetworkMismatch(result.networkPassphrase !== NETWORK_PASSPHRASE);
+    setNetworkMismatch(!isNetworkMatch(result.networkPassphrase));
   }, []);
 
   // Auto-restore from sessionStorage on mount
   useEffect(() => {
-    const saved = sessionStorage.getItem(SESSION_KEY);
+    const saved = loadSession();
     if (saved) {
-      const walletType = (sessionStorage.getItem(SESSION_WALLET_KEY) ?? "freighter") as "freighter" | "lobstr";
-      setAddress(saved);
-      setActiveAdapter(ADAPTERS[walletType]);
+      setAddress(saved.address);
+      setActiveAdapter(ADAPTERS[saved.walletType]);
       checkNetwork().finally(() => setIsAutoConnecting(false));
     } else {
       setIsAutoConnecting(false);
     }
   }, [checkNetwork]);
 
-  const connectWith = useCallback(async (walletType: "freighter" | "lobstr") => {
-    setShowWalletSelect(false);
-    setIsConnecting(true);
-    setError(null);
-    const adapter = ADAPTERS[walletType];
-    try {
-      const addr = await adapter.connect();
-      sessionStorage.setItem(SESSION_KEY, addr);
-      sessionStorage.setItem(SESSION_WALLET_KEY, walletType);
-      setAddress(addr);
-      setActiveAdapter(adapter);
-      await checkNetwork();
-      addToast("Wallet connected successfully!", "success");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to connect wallet.";
-      setError(msg);
-      addToast(msg, "error");
-    } finally {
-      setIsConnecting(false);
-    }
-  }, [checkNetwork, addToast]);
+  const connectWith = useCallback(
+    async (walletType: WalletType) => {
+      setShowWalletSelect(false);
+      setIsConnecting(true);
+      setError(null);
+      const adapter = ADAPTERS[walletType];
+      try {
+        const addr = await adapter.connect();
+        saveSession(addr, walletType);
+        setAddress(addr);
+        setActiveAdapter(adapter);
+        await checkNetwork();
+        addToast("Wallet connected successfully!", "success");
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "Failed to connect wallet.";
+        setError(msg);
+        addToast(msg, "error");
+      } finally {
+        setIsConnecting(false);
+      }
+    },
+    [checkNetwork, addToast],
+  );
 
   const connect = useCallback(async () => {
     setShowWalletSelect(true);
@@ -110,8 +120,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const disconnect = useCallback(async () => {
     await activeAdapter?.disconnect?.();
-    sessionStorage.removeItem(SESSION_KEY);
-    sessionStorage.removeItem(SESSION_WALLET_KEY);
+    clearSession();
     setAddress(null);
     setActiveAdapter(null);
     setNetworkMismatch(false);
@@ -126,26 +135,24 @@ export function WalletProvider({ children }: { children: ReactNode }) {
    * - Re-throws unexpected errors for callers to handle.
    * - Sets isSigning=true during the operation.
    */
-  const signTx = useCallback(async (xdr: string): Promise<string> => {
-    if (!activeAdapter) throw new Error("No wallet connected");
-    setIsSigning(true);
-    try {
-      return await activeAdapter.signTransaction(xdr, NETWORK_PASSPHRASE);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "";
-      if (/declined|rejected|cancel|denied/i.test(msg)) {
-        addToast("Transaction cancelled", "info");
+  const signTx = useCallback(
+    async (xdr: string): Promise<string> => {
+      if (!activeAdapter) throw new Error("No wallet connected");
+      setIsSigning(true);
+      try {
+        return await activeAdapter.signTransaction(xdr, NETWORK_PASSPHRASE);
+      } catch (e) {
+        const kind = classifySignError(e);
+        if (kind === "cancelled") addToast("Transaction cancelled", "info");
+        else if (kind === "network")
+          addToast("Network error, please try again", "error");
         throw e;
+      } finally {
+        setIsSigning(false);
       }
-      if (/network|fetch|timeout|connection/i.test(msg)) {
-        addToast("Network error, please try again", "error");
-        throw e;
-      }
-      throw e;
-    } finally {
-      setIsSigning(false);
-    }
-  }, [activeAdapter, addToast]);
+    },
+    [activeAdapter, addToast],
+  );
 
   return (
     <WalletContext.Provider
