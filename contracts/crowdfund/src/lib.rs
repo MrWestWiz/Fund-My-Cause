@@ -70,11 +70,13 @@ pub use types::{
     Delegation,
     EventBlacklistRemoved,
     EventBlacklisted,
+    EventCategoryUpdated,
     EventContributed,
     EventDeadlineExtended,
     EventDelegatedContribution,
     EventDelegationCreated,
     EventDelegationRevoked,
+    EventEmergencyApproved,
     EventEmergencyExecuted,
     EventEmergencyInitiated,
     EventExtensionExecuted,
@@ -84,7 +86,9 @@ pub use types::{
     EventInitialized,
     EventInsuranceEnabled,
     EventInsurancePayout,
+    EventMatchingSetup,
     EventMetadataUpdated,
+    EventMultiSigConfigured,
     EventPartialRefund,
     EventRateLimitHit,
     EventRateLimitUpdated,
@@ -959,6 +963,9 @@ impl CrowdfundContract {
         admin.require_auth();
         let lock_until = env.ledger().timestamp() + lock_period;
         inst.set(&DataKey::EmergencyLockTime, &lock_until);
+        // Reset multi-sig approval count for the new session so previous approvals
+        // from an older initiation cannot carry over.
+        inst.set(&DataKey::EmergencyApprovalCount, &0u32);
         env.events().publish(
             ("campaign", "emergency_initiated"),
             EventEmergencyInitiated { lock_until },
@@ -990,6 +997,17 @@ impl CrowdfundContract {
         let lock_time: u64 = inst.get(&DataKey::EmergencyLockTime).unwrap_or(0);
         if lock_time == 0 || env.ledger().timestamp() < lock_time {
             return Err(ContractError::EmergencyLocked);
+        }
+
+        // ── Multi-sig check: if a minimum approval count is configured, verify it ─
+        let required: u32 = inst
+            .get(&DataKey::EmergencyApproversRequired)
+            .unwrap_or(0);
+        if required > 0 {
+            let count: u32 = inst.get(&DataKey::EmergencyApprovalCount).unwrap_or(0);
+            if count < required {
+                return Err(ContractError::MultiSigNotMet);
+            }
         }
 
         let total: i128 = inst.get(&KEY_TOTAL).unwrap();
@@ -1033,6 +1051,387 @@ impl CrowdfundContract {
             .publish(("campaign", "emergency_cancelled"), ());
         Ok(())
     }
+
+    // ── Emergency Multi-Sig Functions ─────────────────────────────────────────
+
+    /// Configures multi-sig approval requirements for emergency withdrawals (admin only).
+    ///
+    /// Sets the minimum number of approvals required from a pre-defined list of
+    /// approvers before `execute_emergency_withdrawal` can succeed.
+    /// If multi-sig is not configured (default), the admin-only timelock model remains.
+    ///
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    /// * `required_approvals` - Minimum number of approvals (must be 1–approvers.len())
+    /// * `approvers` - List of authorized approver addresses
+    ///
+    /// # Returns
+    /// * `Ok(())` on success
+    /// * `Err(ContractError::Unauthorized)` if required_approvals is invalid
+    pub fn setup_emergency_multisig(
+        env: Env,
+        required_approvals: u32,
+        approvers: Vec<Address>,
+    ) -> Result<(), ContractError> {
+        let inst = env.storage().instance();
+        let admin: Address = inst.get(&KEY_ADMIN).unwrap();
+        admin.require_auth();
+
+        // required_approvals must be between 1 and the total number of approvers
+        if required_approvals == 0 || required_approvals > approvers.len() {
+            return Err(ContractError::Unauthorized);
+        }
+
+        let approver_count = approvers.len();
+        inst.set(&DataKey::EmergencyApproversRequired, &required_approvals);
+        env.storage()
+            .persistent()
+            .set(&DataKey::EmergencyApproversList, &approvers);
+
+        env.events().publish(
+            ("campaign", "multisig_configured"),
+            EventMultiSigConfigured {
+                required_approvals,
+                approver_count,
+            },
+        );
+        Ok(())
+    }
+
+    /// Submits an approval for the active emergency withdrawal (approver only).
+    ///
+    /// Each authorised approver calls this once per initiated emergency session.
+    /// The call is idempotent — a second call from the same approver in the same
+    /// session is a silent no-op to avoid double-counting.
+    ///
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    /// * `approver` - Approver address (must be in the authorised list and must authorize)
+    ///
+    /// # Returns
+    /// * `Ok(())` on success (including idempotent re-call)
+    /// * `Err(ContractError::EmergencyLocked)` if no emergency has been initiated
+    /// * `Err(ContractError::Unauthorized)` if multi-sig is not configured or approver
+    ///   is not in the authorised list
+    pub fn approve_emergency_withdrawal(
+        env: Env,
+        approver: Address,
+    ) -> Result<(), ContractError> {
+        approver.require_auth();
+
+        let inst = env.storage().instance();
+
+        // An emergency must have been initiated
+        let lock_until: u64 = inst.get(&DataKey::EmergencyLockTime).unwrap_or(0);
+        if lock_until == 0 {
+            return Err(ContractError::EmergencyLocked);
+        }
+
+        // Multi-sig must be configured
+        let required: u32 = inst
+            .get(&DataKey::EmergencyApproversRequired)
+            .unwrap_or(0);
+        if required == 0 {
+            return Err(ContractError::Unauthorized);
+        }
+
+        // Approver must be in the authorised list
+        let approvers: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::EmergencyApproversList)
+            .unwrap_or_else(|| Vec::new(&env));
+        if !approvers.contains(&approver) {
+            return Err(ContractError::Unauthorized);
+        }
+
+        // Idempotency guard: the stored value is the lock_until of the session they
+        // last approved.  A matching value means they already voted this session.
+        let last_approved: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::EmergencyApproval(approver.clone()))
+            .unwrap_or(0);
+        if last_approved == lock_until {
+            // Already approved this session — idempotent no-op
+            return Ok(());
+        }
+
+        // Record approval for this session
+        env.storage()
+            .persistent()
+            .set(&DataKey::EmergencyApproval(approver.clone()), &lock_until);
+
+        let count: u32 = inst.get(&DataKey::EmergencyApprovalCount).unwrap_or(0);
+        let new_count = count + 1;
+        inst.set(&DataKey::EmergencyApprovalCount, &new_count);
+
+        env.events().publish(
+            ("campaign", "emergency_approved"),
+            EventEmergencyApproved {
+                approver,
+                approval_count: new_count,
+            },
+        );
+        Ok(())
+    }
+
+    // ── Template Functions (extended) ─────────────────────────────────────────
+
+    /// Initialises a new campaign from a pre-configured template.
+    ///
+    /// Works like [`initialize`](CrowdfundContract::initialize) but derives
+    /// `min_contribution` from `template.suggested_min` and the campaign category
+    /// from the template type.  The template is stored on-chain for future reference.
+    ///
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    /// * `creator` - Campaign creator address (must authorize)
+    /// * `token` - Contribution token address
+    /// * `goal` - Funding goal in stroops (must be > 0)
+    /// * `deadline` - Campaign end timestamp
+    /// * `max_contribution` - Per-contributor maximum (0 = no limit)
+    /// * `title` - Campaign title (max 64 chars)
+    /// * `description` - Campaign description (max 512 chars)
+    /// * `template` - Template providing suggested_min and template_type
+    /// * `social_links` - Optional social media URLs
+    /// * `platform_config` - Optional platform fee configuration
+    /// * `accepted_tokens` - Optional whitelist of accepted tokens
+    /// * `vesting` - Optional vesting schedule
+    /// * `penalty_bps` - Optional early-withdrawal penalty in basis points
+    ///
+    /// # Returns
+    /// * `Ok(())` on success
+    /// * `Err(ContractError::AlreadyInitialized)` if already initialised
+    /// * `Err(ContractError::InvalidTemplate)` if template.goal_multiplier is 0
+    pub fn initialize_from_template(
+        env: Env,
+        creator: Address,
+        token: Address,
+        goal: i128,
+        deadline: u64,
+        max_contribution: i128,
+        title: String,
+        description: String,
+        template: CampaignTemplate,
+        social_links: Option<Vec<String>>,
+        platform_config: Option<PlatformConfig>,
+        accepted_tokens: Option<Vec<Address>>,
+        vesting: Option<VestingSchedule>,
+        penalty_bps: Option<u32>,
+    ) -> Result<(), ContractError> {
+        if env.storage().instance().has(&KEY_CREATOR) {
+            return Err(ContractError::AlreadyInitialized);
+        }
+        creator.require_auth();
+
+        // ── Validate template ─────────────────────────────────────────────────
+        if template.suggested_min < 0 {
+            return Err(ContractError::BelowMinimum);
+        }
+        if template.goal_multiplier == 0 {
+            return Err(ContractError::InvalidTemplate);
+        }
+        validate_string_length(&template.name, 64)?;
+        validate_string_length(&template.description, 512)?;
+
+        // Derive campaign parameters from template
+        let min_contribution = template.suggested_min;
+        let category = match template.template_type {
+            TemplateType::Charity => Category::Charity,
+            TemplateType::Product => Category::Technology,
+            TemplateType::Event => Category::Event,
+            TemplateType::Personal => Category::Personal,
+            TemplateType::Custom => Category::Other,
+        };
+
+        // ── Validate core parameters ──────────────────────────────────────────
+        if goal <= 0 {
+            return Err(ContractError::InvalidGoal);
+        }
+        validate_goal_not_overflow(goal)?;
+        if deadline <= env.ledger().timestamp() {
+            return Err(ContractError::InvalidDeadline);
+        }
+        if max_contribution < 0
+            || (max_contribution > 0 && max_contribution < min_contribution)
+        {
+            return Err(ContractError::ExceedsMaximum);
+        }
+        validate_string_length(&title, 64)?;
+        validate_string_length(&description, 512)?;
+
+        if let Some(ref config) = platform_config {
+            validate_fee_bps(config.fee_bps)?;
+            validate_address_not_self(&creator, &config.address)?;
+            env.storage().instance().set(&KEY_PLATFORM, config);
+        }
+
+        // Store template for reference
+        env.storage().instance().set(&DataKey::Template, &template);
+
+        // ── Batch all instance writes ─────────────────────────────────────────
+        let storage = env.storage().instance();
+        storage.set(&KEY_ADMIN, &creator);
+        storage.set(&KEY_CREATOR, &creator);
+        storage.set(&KEY_TOKEN, &token);
+        storage.set(&KEY_GOAL, &goal);
+        storage.set(&KEY_DEADLINE, &deadline);
+        storage.set(&KEY_MIN, &min_contribution);
+        storage.set(&KEY_MAX, &max_contribution);
+        storage.set(&KEY_TITLE, &title);
+        storage.set(&KEY_DESC, &description);
+        storage.set(&KEY_TOTAL, &0i128);
+        storage.set(&KEY_STATUS, &Status::Active);
+        storage.set(&KEY_CATEGORY, &category);
+        storage.set(&DataKey::ContributorCount, &0u32);
+        storage.set(&DataKey::LargestContribution, &0i128);
+
+        if let Some(links) = social_links {
+            storage.set(&KEY_SOCIAL, &links);
+        }
+        if let Some(tokens) = accepted_tokens {
+            storage.set(&DataKey::AcceptedTokens, &tokens);
+        }
+        if let Some(v) = vesting {
+            storage.set(&KEY_VESTING, &v);
+        }
+        if let Some(p) = penalty_bps {
+            storage.set(&DataKey::PenaltyBps, &p);
+        }
+
+        // Persistent writes (separate storage tier)
+        let empty: Vec<Address> = Vec::new(&env);
+        env.storage().persistent().set(&KEY_CONTRIBS, &empty);
+
+        let mut history: Vec<GoalAdjustment> = Vec::new(&env);
+        history.push_back(GoalAdjustment {
+            previous_goal: 0,
+            new_goal: goal,
+            timestamp: env.ledger().timestamp(),
+        });
+        env.storage().persistent().set(&KEY_GOAL_HISTORY, &history);
+
+        env.events().publish(
+            ("campaign", "initialized"),
+            EventInitialized {
+                creator,
+                goal,
+                deadline,
+            },
+        );
+        env.events().publish(
+            ("campaign", "template_applied"),
+            EventTemplateApplied {
+                template_type: template.template_type,
+                suggested_min: template.suggested_min,
+            },
+        );
+        Ok(())
+    }
+
+    // ── Matching Functions ────────────────────────────────────────────────────
+
+    /// Configures a sponsor-funded contribution matching pool (creator only).
+    ///
+    /// When matching is active, every qualifying contribution is topped up by the
+    /// sponsor at a rate of `match_ratio` basis points, capped at `max_match` total.
+    /// Matching is applied automatically inside `contribute`.
+    ///
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    /// * `sponsor` - Address of the sponsor funding the match
+    /// * `match_ratio` - Match rate in basis points (e.g. 10 000 = 1 : 1, max 10 000)
+    /// * `max_match` - Maximum total matching in stroops (must be > 0)
+    ///
+    /// # Returns
+    /// * `Ok(())` on success
+    /// * `Err(ContractError::InvalidFee)` if match_ratio > 10 000
+    /// * `Err(ContractError::AmountNotPositive)` if max_match ≤ 0
+    pub fn setup_matching(
+        env: Env,
+        sponsor: Address,
+        match_ratio: u32,
+        max_match: i128,
+    ) -> Result<(), ContractError> {
+        let inst = env.storage().instance();
+        let creator: Address = inst.get(&KEY_CREATOR).unwrap();
+        creator.require_auth();
+
+        if match_ratio > 10_000 {
+            return Err(ContractError::InvalidFee);
+        }
+        if max_match <= 0 {
+            return Err(ContractError::AmountNotPositive);
+        }
+
+        let config = MatchingConfig {
+            sponsor: sponsor.clone(),
+            match_ratio,
+            max_match,
+        };
+
+        inst.set(&DataKey::MatchingConfig, &config);
+        inst.set(&DataKey::TotalMatched, &0i128);
+
+        env.events().publish(
+            ("campaign", "matching_setup"),
+            EventMatchingSetup {
+                sponsor,
+                match_ratio,
+                max_match,
+            },
+        );
+        Ok(())
+    }
+
+    /// Returns the active matching configuration, if any.
+    pub fn get_matching_config(env: Env) -> Option<MatchingConfig> {
+        env.storage().instance().get(&DataKey::MatchingConfig)
+    }
+
+    /// Returns the total amount matched by the sponsor so far.
+    pub fn get_total_matched(env: Env) -> i128 {
+        env.storage()
+            .instance()
+            .get(&DataKey::TotalMatched)
+            .unwrap_or(0)
+    }
+
+    // ── Category Functions ────────────────────────────────────────────────────
+
+    /// Updates the campaign category (creator only, Active campaigns only).
+    ///
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    /// * `category` - New campaign category
+    ///
+    /// # Returns
+    /// * `Ok(())` on success
+    /// * `Err(ContractError::NotActive)` if campaign is not Active
+    pub fn update_category(env: Env, category: Category) -> Result<(), ContractError> {
+        let inst = env.storage().instance();
+        let status: Status = inst.get(&KEY_STATUS).unwrap();
+        if status != Status::Active {
+            return Err(ContractError::NotActive);
+        }
+        let creator: Address = inst.get(&KEY_CREATOR).unwrap();
+        creator.require_auth();
+
+        let old_category: Category = inst.get(&KEY_CATEGORY).unwrap_or(Category::Other);
+        inst.set(&KEY_CATEGORY, &category);
+
+        env.events().publish(
+            ("campaign", "category_updated"),
+            EventCategoryUpdated {
+                old_category,
+                new_category: category,
+            },
+        );
+        Ok(())
+    }
+
+    // ── pause / unpause (admin) ───────────────────────────────────────────────
 
     /// Verify campaign (admin only).
     ///

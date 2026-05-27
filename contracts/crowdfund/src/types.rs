@@ -270,6 +270,14 @@ pub enum DataKey {
     TotalMatched,
     /// Penalty basis points
     PenaltyBps,
+    /// Required number of approvals for emergency withdrawal multi-sig
+    EmergencyApproversRequired,
+    /// Running approval count for the active emergency withdrawal session
+    EmergencyApprovalCount,
+    /// Session token (lock_until timestamp) that a specific address last approved
+    EmergencyApproval(Address),
+    /// Authorized approver addresses for emergency multi-sig
+    EmergencyApproversList,
 }
 
 /// Recurring contribution plan.
@@ -659,4 +667,66 @@ pub struct EventInsuranceEnabled {
 pub struct EventInsurancePayout {
     pub contributor: Address,
     pub amount: i128,
+}
+
+/// Emitted when emergency withdrawal multi-sig is configured.
+///
+/// Event topic: `("campaign", "multisig_configured")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventMultiSigConfigured {
+    /// Minimum number of approvals required to execute the emergency withdrawal
+    pub required_approvals: u32,
+    /// Total number of authorised approver addresses
+    pub approver_count: u32,
+}
+
+/// Emitted when an emergency withdrawal approval is submitted by an approver.
+///
+/// Event topic: `("campaign", "emergency_approved")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventEmergencyApproved {
+    /// Address of the approver who submitted this approval
+    pub approver: Address,
+    /// Running approval count for the current session after this approval
+    pub approval_count: u32,
+}
+
+/// Emitted when a contribution matching pool is configured.
+///
+/// Event topic: `("campaign", "matching_setup")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventMatchingSetup {
+    /// Sponsor address funding the matching pool
+    pub sponsor: Address,
+    /// Match ratio in basis points (e.g. 10 000 = 1 : 1)
+    pub match_ratio: u32,
+    /// Maximum total matching amount in stroops
+    pub max_match: i128,
+}
+
+/// Emitted when a campaign is initialised via a template.
+///
+/// Event topic: `("campaign", "template_applied")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventTemplateApplied {
+    /// Template type used to initialise the campaign
+    pub template_type: TemplateType,
+    /// Minimum contribution derived from the template
+    pub suggested_min: i128,
+}
+
+/// Emitted when the campaign category is updated by the creator.
+///
+/// Event topic: `("campaign", "category_updated")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventCategoryUpdated {
+    /// Previous category before the update
+    pub old_category: Category,
+    /// New category after the update
+    pub new_category: Category,
 }
