@@ -6,7 +6,6 @@ import Link from "next/link";
 import { Navbar } from "@/components/layout/Navbar";
 import { CampaignCard } from "@/components/ui/CampaignCard";
 import { PledgeModal } from "@/components/ui/PledgeModal";
-import { ShareModal } from "@/components/ui/ShareModal";
 import {
   EmptyState,
   NoCampaignsIllustration,
@@ -16,6 +15,7 @@ import { Campaign } from "@/types/campaign";
 import { ALL_CAMPAIGNS } from "@/lib/campaigns";
 import { Search, GitCompare, SlidersHorizontal, X } from "lucide-react";
 import { useComparison } from "@/context/ComparisonContext";
+import { Pagination } from "@/components/ui/Pagination";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -38,12 +38,9 @@ function applyFilter(campaigns: Campaign[], filter: FilterTab): Campaign[] {
 
 function applySort(campaigns: Campaign[], sort: SortOption): Campaign[] {
   return [...campaigns].sort((a, b) => {
-    if (sort === "popular")
-      return (b.contributorCount ?? 0) - (a.contributorCount ?? 0);
-    if (sort === "deadline")
+    if (sort === "most-funded") return b.raised / b.goal - a.raised / a.goal;
+    if (sort === "ending-soon")
       return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
-    if (sort === "progress") return b.raised / b.goal - a.raised / a.goal;
-    // recent — newest first by id
     return Number(b.id) - Number(a.id);
   });
 }
@@ -55,18 +52,7 @@ const FILTER_TABS: { label: string; value: FilterTab }[] = [
   { label: "Ended", value: "ended" },
 ];
 
-const SORT_OPTIONS: { label: string; value: SortOption }[] = [
-  { label: "Recent", value: "recent" },
-  { label: "Most Popular", value: "popular" },
-  { label: "Deadline", value: "deadline" },
-  { label: "Most Funded", value: "progress" },
-];
-
-const CATEGORIES = Array.from(
-  new Set(ALL_CAMPAIGNS.map((c) => c.category).filter(Boolean)),
-) as string[];
-
-const PAGE_SIZE = 9;
+const PAGE_SIZE_OPTIONS = [9, 18, 36];
 
 // ── Inner component (uses useSearchParams) ────────────────────────────────────
 
@@ -80,6 +66,11 @@ function CampaignsInner() {
   const query = searchParams.get("q") ?? "";
   const category = searchParams.get("category") ?? "";
   const page = Math.max(1, Number(searchParams.get("page") ?? "1"));
+
+  const pageSize = Math.max(
+    1,
+    Number(searchParams.get("pageSize") ?? String(PAGE_SIZE_OPTIONS[0])),
+  );
 
   const [pledge, setPledge] = useState<string | null>(null);
   const [shareTarget, setShareTarget] = useState<{
@@ -95,44 +86,16 @@ function CampaignsInner() {
 
   const setParam = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams.toString());
-    if (value === "") {
-      params.delete(key);
-    } else if (key === "filter" && value === "all") {
-      params.delete(key);
-    } else if (key === "sort" && value === "recent") {
+    if (
+      value === "" ||
+      (key === "filter" && value === "all") ||
+      (key === "sort" && value === "newest")
+    ) {
       params.delete(key);
     } else {
       params.set(key, value);
     }
     if (key !== "page") params.delete("page");
-    router.replace(`/campaigns?${params.toString()}`, { scroll: false });
-  };
-
-  const applyAdvanced = () => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (goalMin) params.set("goalMin", goalMin);
-    else params.delete("goalMin");
-    if (goalMax) params.set("goalMax", goalMax);
-    else params.delete("goalMax");
-    if (dateFrom) params.set("dateFrom", dateFrom);
-    else params.delete("dateFrom");
-    if (dateTo) params.set("dateTo", dateTo);
-    else params.delete("dateTo");
-    params.delete("page");
-    router.replace(`/campaigns?${params.toString()}`, { scroll: false });
-    setShowAdvanced(false);
-  };
-
-  const clearAdvanced = () => {
-    setGoalMin("");
-    setGoalMax("");
-    setDateFrom("");
-    setDateTo("");
-    const params = new URLSearchParams(searchParams.toString());
-    ["goalMin", "goalMax", "dateFrom", "dateTo"].forEach((k) =>
-      params.delete(k),
-    );
-    params.delete("page");
     router.replace(`/campaigns?${params.toString()}`, { scroll: false });
   };
 
@@ -150,6 +113,13 @@ function CampaignsInner() {
     const params = new URLSearchParams(searchParams.toString());
     if (p === 1) params.delete("page");
     else params.set("page", String(p));
+    router.replace(`/campaigns?${params.toString()}`, { scroll: false });
+  };
+
+  const setPageSize = (size: number) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("pageSize", String(size));
+    params.delete("page");
     router.replace(`/campaigns?${params.toString()}`, { scroll: false });
   };
 
@@ -194,18 +164,12 @@ function CampaignsInner() {
     sort,
   );
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const paginated = filtered.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE,
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
   );
-
-  const selectCls =
-    "bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500";
-
-  const inputCls =
-    "w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500";
 
   return (
     <>
@@ -347,7 +311,7 @@ function CampaignsInner() {
       <div
         className="flex gap-2 mb-8"
         role="tablist"
-        aria-label="Filter campaigns by status"
+        aria-label="Filter campaigns"
       >
         {FILTER_TABS.map((tab, idx) => (
           <button
@@ -402,9 +366,6 @@ function CampaignsInner() {
         />
       ) : (
         <>
-          <p className="text-sm text-gray-500 mb-4">
-            {filtered.length} campaign{filtered.length !== 1 ? "s" : ""} found
-          </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {paginated.map((campaign, i) => (
               <CampaignCard
@@ -418,27 +379,15 @@ function CampaignsInner() {
             ))}
           </div>
 
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-4 mt-10">
-              <button
-                onClick={() => setPage(currentPage - 1)}
-                disabled={currentPage === 1}
-                className="px-4 py-2 rounded-xl bg-gray-800 text-sm text-gray-300 hover:bg-gray-700 disabled:opacity-30 transition"
-              >
-                Previous
-              </button>
-              <span className="text-sm text-gray-400">
-                Page {currentPage} of {totalPages}
-              </span>
-              <button
-                onClick={() => setPage(currentPage + 1)}
-                disabled={currentPage === totalPages}
-                className="px-4 py-2 rounded-xl bg-gray-800 text-sm text-gray-300 hover:bg-gray-700 disabled:opacity-30 transition"
-              >
-                Next
-              </button>
-            </div>
-          )}
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={filtered.length}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
+          />
         </>
       )}
 
