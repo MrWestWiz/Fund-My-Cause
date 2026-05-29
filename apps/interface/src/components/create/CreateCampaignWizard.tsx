@@ -26,12 +26,14 @@ import type { FAQ, TeamMember } from "@/types/campaign";
 import { CheckCircle2, XCircle, FileText, X, Eye, Trash2, PlusCircle } from "lucide-react";
 import { CampaignPreviewModal } from "@/components/ui/CampaignPreviewModal";
 import { BackButton } from "@/components/ui/BackButton";
+import { CATEGORY_TAXONOMY, saveCampaignMeta } from "@/lib/categories";
 
 interface FormData {
   contractId: string;
   token: string;
   title: string;
   description: string;
+  category: string;
   goal: string;
   deadline: string;
   minContribution: string;
@@ -61,6 +63,7 @@ export const INITIAL: FormData = {
   token: "",
   title: "",
   description: "",
+  category: "",
   goal: "",
   deadline: "",
   minContribution: "1",
@@ -147,6 +150,20 @@ function Step1({ data, set }: { data: FormData; set: (k: keyof FormData, v: stri
           onChange={(e) => set("description", e.target.value)}
         />
       </FieldWithError>
+      <Field label="Category">
+        <select
+          className={inputCls}
+          value={data.category}
+          onChange={(e) => set("category", e.target.value)}
+        >
+          <option value="">Select a category…</option>
+          {CATEGORY_TAXONOMY.map((cat) => (
+            <option key={cat.slug} value={cat.slug}>
+              {cat.emoji} {cat.label}
+            </option>
+          ))}
+        </select>
+      </Field>
       <div className="grid grid-cols-2 gap-4">
         <FieldWithError label="Goal (XLM)" error={goalError}>
           <input
@@ -440,6 +457,7 @@ function Step5({ data }: { data: FormData }) {
       <ReviewRow label="Token" value={data.token} />
       <ReviewRow label="Title" value={data.title} />
       <ReviewRow label="Description" value={data.description} />
+      <ReviewRow label="Category" value={data.category} />
       <ReviewRow label="Goal" value={data.goal ? `${data.goal} XLM` : ""} />
       <ReviewRow
         label="Min Contribution"
@@ -472,6 +490,8 @@ export function validateStep(step: number, data: FormData): string | null {
 
     const descErr = validateDescription(data.description);
     if (descErr) return descErr;
+
+    if (!data.category) return "Please select a category.";
 
     const goalErr = validateGoal(data.goal);
     if (goalErr) return goalErr;
@@ -619,6 +639,9 @@ export function CreateCampaignWizard() {
       clearDraft();
       setTxHash(hash);
       setTxStatus("success");
+      if (data.category) {
+        saveCampaignMeta(data.contractId, { category: data.category });
+      }
     } catch (e) {
       setTxError(e instanceof Error ? e.message : "Transaction failed.");
       setTxStatus("error");

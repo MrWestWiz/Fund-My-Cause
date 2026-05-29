@@ -22,6 +22,7 @@ import { useSearchSuggestions } from "@/hooks/useSearchSuggestions";
 import type { SearchSuggestion } from "@/hooks/useSearchSuggestions";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { BreadcrumbProvider } from "@/context/BreadcrumbContext";
+import { CATEGORY_TAXONOMY } from "@/lib/categories";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,7 +31,6 @@ type SortOption = "recent" | "most-funded" | "ending-soon" | "progress";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const CATEGORIES = ["Technology", "Education", "Health", "Arts", "Environment", "Community"];
 const SORT_OPTIONS = [
   { label: "Newest", value: "recent" },
   { label: "Most Funded", value: "most-funded" },
@@ -299,21 +299,6 @@ export function CampaignsInner() {
           />
         </div>
 
-        {/* Category filter */}
-        <select
-          value={category}
-          onChange={(e) => setParam("category", e.target.value)}
-          aria-label="Filter by category"
-          className={selectCls}
-        >
-          <option value="">All Categories</option>
-          {CATEGORIES.map((cat) => (
-            <option key={cat} value={cat}>
-              {cat.charAt(0).toUpperCase() + cat.slice(1)}
-            </option>
-          ))}
-        </select>
-
         {/* Sort */}
         <select
           value={sort}
@@ -455,6 +440,33 @@ export function CampaignsInner() {
           </div>
         </div>
       )}
+
+      {/* Category filter pills */}
+      <div className="flex flex-wrap gap-2 mb-4" role="group" aria-label="Filter by category">
+        <button
+          onClick={() => setParam("category", "")}
+          className={`px-3 py-1 rounded-full text-sm font-medium transition ${
+            !category
+              ? "bg-indigo-600 text-white"
+              : "bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+          }`}
+        >
+          All
+        </button>
+        {CATEGORY_TAXONOMY.map((cat) => (
+          <button
+            key={cat.slug}
+            onClick={() => setParam("category", category === cat.slug ? "" : cat.slug)}
+            className={`px-3 py-1 rounded-full text-sm font-medium transition ${
+              category === cat.slug
+                ? "bg-indigo-600 text-white"
+                : "bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+            }`}
+          >
+            {cat.emoji} {cat.label}
+          </button>
+        ))}
+      </div>
 
       {/* Filter tabs */}
       <div

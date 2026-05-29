@@ -11,6 +11,7 @@ import { formatXlm } from "@/lib/price";
 import type { Campaign } from "@/types/campaign";
 import { useComparison } from "@/context/ComparisonContext";
 import { useBookmarks } from "@/context/BookmarkContext";
+import { getCategoryBySlug } from "@/lib/categories";
 
 export interface CampaignCardProps {
   campaign: Campaign;
@@ -64,6 +65,16 @@ function StatusBadge({ status }: { status: "funded" | "ended" }) {
   );
 }
 
+function CategoryBadge({ slug }: { slug?: string }) {
+  const cat = getCategoryBySlug(slug);
+  if (!cat) return null;
+  return (
+    <span className="absolute top-3 right-3 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-black/60 text-white backdrop-blur-sm">
+      {cat.emoji} {cat.label}
+    </span>
+  );
+}
+
 export function CampaignCard({
   campaign,
   onPledge,
@@ -112,7 +123,8 @@ export function CampaignCard({
             ▶ Video
           </span>
         )}
-        <div className="absolute top-3 right-3 flex gap-1">
+        <CategoryBadge slug={campaign.category} />
+        <div className="absolute top-10 right-3 flex gap-1">
           {onShare && (
             <button
               onClick={(e) => {
