@@ -25,6 +25,7 @@ import { CampaignPreview } from "@/components/ui/CampaignPreview";
 import type { FAQ, TeamMember } from "@/types/campaign";
 import { CheckCircle2, XCircle, FileText, X, Eye, Trash2, PlusCircle } from "lucide-react";
 import { CampaignPreviewModal } from "@/components/ui/CampaignPreviewModal";
+import { BackButton } from "@/components/ui/BackButton";
 
 interface FormData {
   contractId: string;
@@ -642,6 +643,11 @@ export function CreateCampaignWizard() {
           </div>
         ) : (
           <div className={showPreview ? "max-w-4xl mx-auto px-6 py-12" : "max-w-xl mx-auto px-6 py-12"}>
+            <BackButton
+              fallbackPath="/"
+              confirmMessage="You have unsaved changes. Are you sure you want to leave?"
+              className="mb-6"
+            />
             <h1 className="text-3xl font-bold mb-4">Create Campaign</h1>
 
             {hasDraft && showResumeBanner && !showPreview && (
