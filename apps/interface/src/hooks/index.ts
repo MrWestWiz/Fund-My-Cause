@@ -22,10 +22,8 @@ export { useRecommendations } from "./useRecommendations";
 export { useComments } from "./useComments";
 export { useBreakpoint } from "./useBreakpoint";
 export { useFocusTrap } from "./useFocusTrap";
-export { useFormValidation } from "./useFormValidation";
-export { useInputMask } from "./useInputMask";
-export type { MaskType, UseMaskResult } from "./useInputMask";
-export { useAutoSave } from "./useAutoSave";
-export type { AutoSaveStatus, UseAutoSaveOptions, UseAutoSaveReturn } from "./useAutoSave";
-export { useUndoRedo } from "./useUndoRedo";
-export type { UseUndoRedoReturn } from "./useUndoRedo";
+export { useInfiniteScroll } from "./useInfiniteScroll";
+export type {
+  UseInfiniteScrollOptions,
+  UseInfiniteScrollReturn,
+} from "./useInfiniteScroll";
