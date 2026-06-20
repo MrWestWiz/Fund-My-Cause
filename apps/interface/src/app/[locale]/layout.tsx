@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "../globals.css";
+import "../rtl.css";
 import { WalletProvider } from "@/context/WalletContext";
 import { ToastProvider } from "@/components/ui/Toast";
 import { ThemeProvider } from "@/context/ThemeContext";
