@@ -153,7 +153,7 @@ export function PledgeModal({
   return (
     // Backdrop: closes modal on click. Keyboard dismissal (Escape) is handled by the focus trap inside the dialog.
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50"
       aria-modal="true"
       onClick={(e) => {
         if (e.target === e.currentTarget && !isProcessing) onClose();
@@ -163,7 +163,7 @@ export function PledgeModal({
         ref={dialogRef}
         role="dialog"
         aria-labelledby={titleId}
-        className="ds-card p-6 w-full max-w-md space-y-4"
+        className="ds-card p-6 w-full sm:max-w-md space-y-4 rounded-b-none sm:rounded-2xl pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
       >
         <div className="flex justify-between items-center">
           <h2 id={titleId} className="text-lg font-semibold">
@@ -199,6 +199,7 @@ export function PledgeModal({
               <input
                 id="pledge-amount"
                 type="number"
+                inputMode="decimal"
                 placeholder={t("amountPlaceholder", { min: minXlm })}
                 value={amount}
                 min={minXlm}
@@ -208,7 +209,7 @@ export function PledgeModal({
                 }
                 disabled={isProcessing}
                 aria-label={t("amountLabel", { min: minXlm })}
-                className="ds-input w-full px-4 py-2 disabled:opacity-50"
+                className="ds-input w-full px-4 py-3 disabled:opacity-50 text-base"
               />
               {minContribution > XLM_TO_STROOPS && (
                 <p className="text-xs text-gray-500">
@@ -224,7 +225,7 @@ export function PledgeModal({
                   ? t("confirmPledgeAriaLabel", { campaignTitle })
                   : t("connectWalletAriaLabel")
               }
-              className="ds-btn-primary w-full py-2"
+              className="ds-btn-primary w-full py-3 touch-manipulation"
             >
               {address ? t("confirmPledge") : t("connectWalletToPledge")}
             </button>

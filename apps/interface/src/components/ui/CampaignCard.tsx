@@ -109,13 +109,13 @@ export function CampaignCard({
       className="ds-card"
     >
       <div className="relative">
-        <div className="relative w-full h-48">
+        <div className="relative w-full h-48 sm:h-48">
           <Image
             src={campaign.image}
             alt={`${campaign.title} - campaign header image`}
             fill
             className="object-cover"
-            sizes="(max-width: 768px) 100vw, 33vw"
+            sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, 33vw"
           />
         </div>
         {isFunded && <StatusBadge status="funded" label={t("funded")} />}
@@ -134,7 +134,7 @@ export function CampaignCard({
                 onShare(campaign.id, campaign.title);
               }}
               aria-label={t("shareCampaign")}
-              className="p-1.5 rounded-full bg-[var(--color-surface)]/80 hover:bg-[var(--color-surface-elevated)] transition"
+              className="p-2 rounded-full bg-[var(--color-surface)]/80 hover:bg-[var(--color-surface-elevated)] transition touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
             >
               <Share2 size={15} className="text-[var(--color-text-muted)]" />
             </button>
@@ -145,7 +145,7 @@ export function CampaignCard({
               toggleBookmark(campaign.id);
             }}
             aria-label={bookmarked ? t("removeBookmark") : t("bookmarkCampaign")}
-            className="p-1.5 rounded-full bg-[var(--color-surface)]/80 hover:bg-[var(--color-surface-elevated)] transition"
+            className="p-2 rounded-full bg-[var(--color-surface)]/80 hover:bg-[var(--color-surface-elevated)] transition touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
             <Bookmark
               size={15}
@@ -159,8 +159,8 @@ export function CampaignCard({
         </div>
       </div>
 
-      <div className="p-5 space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">
+      <div className="p-4 sm:p-5 space-y-3">
+        <h2 className="text-base sm:text-lg font-semibold text-[var(--color-text-primary)]">
           <Highlight text={campaign.title} query={query} />
         </h2>
         <p className="text-[var(--color-text-secondary)] text-sm line-clamp-2">
@@ -174,7 +174,7 @@ export function CampaignCard({
         <CountdownTimer deadline={campaign.deadline} />
         <label
           className={cn(
-            "flex items-center gap-2 text-xs cursor-pointer select-none",
+            "flex items-center gap-2 text-xs cursor-pointer select-none touch-manipulation",
             compareDisabled && "opacity-40 cursor-not-allowed",
           )}
         >
@@ -183,13 +183,13 @@ export function CampaignCard({
             checked={compared}
             disabled={compareDisabled}
             onChange={() => toggleCompare(campaign.id)}
-            className="accent-[var(--color-brand)] w-3.5 h-3.5"
+            className="accent-[var(--color-brand)] w-4 h-4"
           />
           <GitCompare size={12} className="text-[var(--color-text-muted)]" />
           <span className="text-[var(--color-text-muted)]">{t("compare")}</span>
         </label>
         <button
-          className="ds-btn-primary w-full py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="ds-btn-primary w-full py-3 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
           onClick={() => onPledge?.(campaign.id)}
           disabled={isDisabled}
           aria-label={

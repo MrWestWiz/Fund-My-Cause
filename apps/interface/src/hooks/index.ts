@@ -32,3 +32,6 @@ export { useWallet } from "./useWallet";
 export { useTheme } from "./useTheme";
 export { useNotifications } from "./useNotifications";
 export { useModal } from "./useModal";
+
+// PWA hooks
+export { useInstallPrompt } from "./useInstallPrompt";
