@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "next-intl";
 
 interface TimeLeft {
   days: number;
@@ -40,6 +41,7 @@ export function CountdownTimer({
   variant = "inline",
   className,
 }: CountdownTimerProps) {
+  const t = useTranslations("countdown");
   const [time, setTime] = useState<TimeLeft>(() => getTimeLeft(deadline));
 
   const isExpired = time.total <= 0;
@@ -59,20 +61,20 @@ export function CountdownTimer({
         <div
           className={cn("flex items-center gap-1.5", className)}
           role="timer"
-          aria-label="Campaign ended"
+          aria-label={t("endedAriaLabel")}
         >
           <span className="text-sm font-medium text-[var(--color-text-muted)]">
-            Campaign Ended
+            {t("ended")}
           </span>
         </div>
       );
     }
 
     const segments = [
-      { value: time.days, label: "d" },
-      { value: time.hours, label: "h" },
-      { value: time.minutes, label: "m" },
-      { value: time.seconds, label: "s" },
+      { value: time.days, label: t("days") },
+      { value: time.hours, label: t("hours") },
+      { value: time.minutes, label: t("minutes") },
+      { value: time.seconds, label: t("seconds") },
     ];
 
     return (
@@ -81,7 +83,12 @@ export function CountdownTimer({
         role="timer"
         aria-live="polite"
         aria-atomic="true"
-        aria-label={`${time.days}d ${time.hours}h ${time.minutes}m ${time.seconds}s remaining`}
+        aria-label={t("remainingAriaLabel", {
+          days: time.days,
+          hours: time.hours,
+          minutes: time.minutes,
+          seconds: time.seconds,
+        })}
       >
         {segments.map(({ value, label }, i) => (
           <React.Fragment key={label}>
@@ -117,16 +124,16 @@ export function CountdownTimer({
         aria-atomic="true"
         className={cn("text-xs text-[var(--color-text-muted)]", className)}
       >
-        Campaign Ended
+        {t("ended")}
       </p>
     );
   }
 
   const { days, hours, minutes, seconds } = time;
-  const label =
+  const timeStr =
     time.total > 3600000
-      ? `${days}d ${hours}h ${minutes}m left`
-      : `${hours}h ${minutes}m ${seconds}s left`;
+      ? `${days}${t("days")} ${hours}${t("hours")} ${minutes}${t("minutes")}`
+      : `${hours}${t("hours")} ${minutes}${t("minutes")} ${seconds}${t("seconds")}`;
 
   return (
     <p
@@ -140,7 +147,7 @@ export function CountdownTimer({
         className,
       )}
     >
-      {label}
+      {t("left", { time: timeStr })}
     </p>
   );
 }

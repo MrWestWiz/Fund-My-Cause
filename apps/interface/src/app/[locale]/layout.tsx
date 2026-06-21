@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "../globals.css";
+import "../rtl.css";
+import { WalletProvider } from "@/context/WalletContext";
 import { ToastProvider } from "@/components/ui/Toast";
 import { ComparisonProvider } from "@/context/ComparisonContext";
 import { BookmarkProvider } from "@/context/BookmarkContext";
