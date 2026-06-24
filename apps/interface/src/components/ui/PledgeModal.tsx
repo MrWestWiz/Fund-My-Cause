@@ -8,6 +8,7 @@ import { useToast } from "@/components/ui/Toast";
 import { contribute } from "@/lib/contract";
 import { useAccountExists } from "@/hooks/useAccountExists";
 import { useTranslations } from "next-intl";
+import { computePledgeSuggestions } from "@/lib/pledgeSuggestions";
 
 const XLM_TO_STROOPS = 10_000_000n;
 const PLEDGE_DEBOUNCE_MS = 2000;
@@ -17,6 +18,12 @@ interface PledgeModalProps {
   campaignTitle: string;
   /** Minimum contribution in stroops. */
   minContribution?: bigint;
+  /** Per-contributor maximum in stroops (0 = no cap). */
+  maxContribution?: bigint;
+  /** Campaign goal in stroops (used for suggestion engine). */
+  goalStroops?: bigint;
+  /** Amount already raised in stroops (used for suggestion engine). */
+  raisedStroops?: bigint;
   onClose: () => void;
   /** Called after a successful pledge so the parent can refresh stats. */
   onSuccess?: () => void;
@@ -30,6 +37,9 @@ export function PledgeModal({
   contractId,
   campaignTitle,
   minContribution = 1n,
+  maxContribution = 0n,
+  goalStroops = 0n,
+  raisedStroops = 0n,
   onClose,
   onSuccess,
   onOptimisticContribute,
@@ -83,6 +93,14 @@ export function PledgeModal({
   }, [onClose]);
 
   const minXlm = Number(minContribution) / 1e7;
+
+  // ── Suggestion engine ──────────────────────────────────────────────────────
+  const suggestions = computePledgeSuggestions({
+    goalStroops,
+    raisedStroops,
+    minContributionStroops: minContribution,
+    maxContributionStroops: maxContribution,
+  });
 
   const handlePledge = async () => {
     if (!address) {
@@ -215,6 +233,30 @@ export function PledgeModal({
                 <p className="text-xs text-gray-500">
                   {t("minimumNote", { min: minXlm })}
                 </p>
+              )}
+              {/* ── Suggestion chips ─────────────────────────────────────── */}
+              {suggestions.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-1" role="group" aria-label="Suggested amounts">
+                  {suggestions.map((s) => {
+                    const xlmValue = (Number(s.amountStroops) / 1e7).toString();
+                    return (
+                      <button
+                        key={xlmValue}
+                        type="button"
+                        onClick={() => setAmount(xlmValue)}
+                        disabled={isProcessing}
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition border ${
+                          s.completesGoal
+                            ? "bg-indigo-600 border-indigo-500 text-white hover:bg-indigo-500"
+                            : "bg-gray-800 border-gray-700 text-gray-300 hover:border-indigo-500 hover:text-white"
+                        } disabled:opacity-40`}
+                        aria-label={s.completesGoal ? `${s.label} — completes goal` : s.label}
+                      >
+                        {s.label}
+                      </button>
+                    );
+                  })}
+                </div>
               )}
             </div>
             <button
