@@ -112,6 +112,7 @@ const SEMANTIC_MAP: Record<string, string[]> = {
 // ── Tokenisation ──────────────────────────────────────────────────────────────
 
 function tokenize(text: string): string[] {
+  if (!text || typeof text !== "string") return [];
   return text
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
@@ -297,11 +298,12 @@ function computeFacets(campaigns: Campaign[]): SearchFacets {
 export function advancedSearch(
   campaigns: Campaign[],
   filters: SearchFilters,
-  preferences: UserPreferences,
+  preferences?: UserPreferences,
 ): SearchResult {
   const start = performance.now();
+  const prefs = preferences ?? { categoryViews: {}, recentSearches: [] };
   const {
-    query = "",
+    query: rawQuery = "",
     category,
     status = "all",
     goalMin,
@@ -311,8 +313,9 @@ export function advancedSearch(
     sort = "newest",
     page = 1,
     pageSize = 9,
-  } = filters;
+  } = filters ?? {};
 
+  const query = rawQuery ?? "";
   const queryTokens = tokenize(query);
   const expandedTokens = expandQuery(queryTokens);
   const hasQuery = query.trim().length > 0;
@@ -333,7 +336,7 @@ export function advancedSearch(
       queryTokens,
       expandedTokens,
       query,
-      preferences,
+      prefs,
     );
 
     // When a query is present, exclude zero-score campaigns
