@@ -1,37 +1,35 @@
+"use client";
+
 import React from "react";
-import { formatXlm } from "@/lib/price";
+import { useCurrency } from "@/context/CurrencyContext";
 
 interface XlmAmountProps {
   xlm: number;
-  /** Pass null when price fetch failed — USD portion is hidden automatically */
-  price: number | null;
+  /** Pass null to skip fiat conversion regardless of user preference */
+  price?: number | null;
   className?: string;
 }
 
 /**
- * Renders an XLM amount with an optional USD estimate.
- * Works in both server and client components.
- *
- * Example output: "15,400 XLM (~$2,156 USD)"
+ * Renders an XLM amount with an optional fiat equivalent based on the user's
+ * selected currency. Hovering shows the original XLM value.
  */
-export function XlmAmount({ xlm, price, className }: XlmAmountProps) {
-  const xlmStr = xlm.toLocaleString(undefined, { maximumFractionDigits: 7 });
+export function XlmAmount({ xlm, className }: XlmAmountProps) {
+  const { formatFiat } = useCurrency();
 
-  if (price === null) {
-    return <span className={className}>{xlmStr} XLM</span>;
+  const xlmStr = `${xlm.toLocaleString(undefined, { maximumFractionDigits: 7 })} XLM`;
+  const fiatStr = formatFiat(xlm);
+
+  if (!fiatStr) {
+    return <span className={className}>{xlmStr}</span>;
   }
 
-  const usd = xlm * price;
-  const usdStr = usd.toLocaleString(undefined, {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  });
-
   return (
-    <span className={className}>
-      {xlmStr} XLM{" "}
-      <span className="text-gray-500 dark:text-gray-400 font-normal">(~{usdStr} USD)</span>
+    <span className={className} title={xlmStr}>
+      {fiatStr}{" "}
+      <span className="text-gray-500 dark:text-gray-400 font-normal text-[0.85em]">
+        ({xlmStr})
+      </span>
     </span>
   );
 }

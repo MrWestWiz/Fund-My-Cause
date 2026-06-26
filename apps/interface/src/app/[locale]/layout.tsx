@@ -3,6 +3,10 @@ import "../globals.css";
 import "../rtl.css";
 import { WalletProvider } from "@/context/WalletContext";
 import { ToastProvider } from "@/components/ui/Toast";
+import { ThemeProvider } from "@/context/ThemeContext";
+import { NotificationProvider } from "@/context/NotificationContext";
+import { NotificationPreferencesProvider } from "@/context/NotificationPreferencesContext";
+import { CurrencyProvider } from "@/context/CurrencyContext";
 import { ComparisonProvider } from "@/context/ComparisonContext";
 import { BookmarkProvider } from "@/context/BookmarkContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -62,24 +66,23 @@ export default async function LocaleLayout({
         <SkipNav />
         <ErrorBoundary level="page">
           <ErrorHandlerInitializer />
-          <ReduxProvider>
-            <NextIntlClientProvider messages={messages}>
-              <ThemeApplier />
-              <ModalRenderer>
-                <ToastProvider>
-                  <ComparisonProvider>
-                    <BookmarkProvider>
-                      <BreadcrumbProvider>
-                        <CommandPaletteProvider>
-                          {children}
-                        </CommandPaletteProvider>
-                      </BreadcrumbProvider>
-                    </BookmarkProvider>
-                  </ComparisonProvider>
-                </ToastProvider>
-              </ModalRenderer>
-            </NextIntlClientProvider>
-          </ReduxProvider>
+          <NextIntlClientProvider messages={messages}>
+            <ThemeProvider>
+              <ToastProvider>
+                <NotificationPreferencesProvider>
+                  <NotificationProvider>
+                    <CurrencyProvider>
+                      <ComparisonProvider>
+                        <BookmarkProvider>
+                          <WalletProvider>{children}</WalletProvider>
+                        </BookmarkProvider>
+                      </ComparisonProvider>
+                    </CurrencyProvider>
+                  </NotificationProvider>
+                </NotificationPreferencesProvider>
+              </ToastProvider>
+            </ThemeProvider>
+          </NextIntlClientProvider>
         </ErrorBoundary>
       </body>
     </html>

@@ -9,7 +9,11 @@ import React, {
   ReactNode,
 } from "react";
 
-export type NotificationType = "contribution" | "goal_reached" | "deadline" | "info";
+export type NotificationType =
+  | "contribution"
+  | "goal_reached"
+  | "deadline"
+  | "info";
 
 export interface Notification {
   id: string;
@@ -49,6 +53,35 @@ function save(notifications: Notification[]) {
   } catch {}
 }
 
+function loadPrefs(): Record<NotificationType, boolean> {
+  try {
+    const raw = localStorage.getItem("fmc:notif-prefs");
+    if (!raw)
+      return {
+        contribution: true,
+        goal_reached: true,
+        deadline: true,
+        info: true,
+      };
+    const parsed = JSON.parse(raw);
+    return (
+      parsed?.categories ?? {
+        contribution: true,
+        goal_reached: true,
+        deadline: true,
+        info: true,
+      }
+    );
+  } catch {
+    return {
+      contribution: true,
+      goal_reached: true,
+      deadline: true,
+      info: true,
+    };
+  }
+}
+
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
@@ -63,6 +96,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const addNotification = useCallback(
     (n: Omit<Notification, "id" | "timestamp" | "read">) => {
+      // Respect in-app category preferences
+      const cats = loadPrefs();
+      if (cats[n.type] === false) return;
+
       const entry: Notification = {
         ...n,
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -75,19 +112,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         return next;
       });
     },
-    []
+    [],
   );
 
-  const markAsRead = useCallback(
-    (id: string) => {
-      setNotifications((prev) => {
-        const next = prev.map((n) => (n.id === id ? { ...n, read: true } : n));
-        save(next);
-        return next;
-      });
-    },
-    []
-  );
+  const markAsRead = useCallback((id: string) => {
+    setNotifications((prev) => {
+      const next = prev.map((n) => (n.id === id ? { ...n, read: true } : n));
+      save(next);
+      return next;
+    });
+  }, []);
 
   const markAllAsRead = useCallback(() => {
     setNotifications((prev) => {
@@ -103,7 +137,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   return (
     <NotificationContext.Provider
-      value={{ notifications, unreadCount, addNotification, markAsRead, markAllAsRead, clearAll }}
+      value={{
+        notifications,
+        unreadCount,
+        addNotification,
+        markAsRead,
+        markAllAsRead,
+        clearAll,
+      }}
     >
       {children}
     </NotificationContext.Provider>
@@ -112,6 +153,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
 export function useNotifications() {
   const ctx = useContext(NotificationContext);
-  if (!ctx) throw new Error("useNotifications must be used within NotificationProvider");
+  if (!ctx)
+    throw new Error(
+      "useNotifications must be used within NotificationProvider",
+    );
   return ctx;
 }

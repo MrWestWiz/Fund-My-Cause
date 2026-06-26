@@ -1,39 +1,55 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Navbar } from "@/components/layout/Navbar";
 import { CampaignSelector } from "@/components/ui/CampaignSelector";
 import { ComparisonTable } from "@/components/ui/ComparisonTable";
 import { ComparisonChart } from "@/components/ui/ComparisonChart";
 import { useComparison } from "@/context/ComparisonContext";
 import { ALL_CAMPAIGNS } from "@/lib/campaigns";
-import {
-  Share2,
-  X,
-  ArrowLeft,
-  GitCompare,
-  BarChart3,
-  Table2,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-
-type ViewMode = "table" | "chart" | "both";
+import { formatXlm } from "@/lib/price";
+import { Share2, X, ArrowLeft, Check } from "lucide-react";
 
 export default function ComparePage() {
-  const { selected, clear, toggle } = useComparison();
+  const { selected, clear, toggle, hydrate } = useComparison();
   const router = useRouter();
-  const [viewMode, setViewMode] = React.useState<ViewMode>("both");
+  const searchParams = useSearchParams();
+  const [copied, setCopied] = useState(false);
+
+  // Hydrate from ?ids= on first load
+  useEffect(() => {
+    const idsParam = searchParams.get("ids");
+    if (idsParam) {
+      const ids = idsParam
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (ids.length > 0) hydrate(ids);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const campaigns = selected
     .map((id) => ALL_CAMPAIGNS.find((c) => c.id === id))
     .filter(Boolean) as typeof ALL_CAMPAIGNS;
 
-  const handleShare = () => {
+  const handleShare = async () => {
     const url = `${window.location.origin}/compare?ids=${selected.join(",")}`;
-    navigator.clipboard.writeText(url).catch(() => {});
-    alert("Comparison link copied to clipboard!");
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // Fallback for environments without clipboard API
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   if (campaigns.length === 0) {
@@ -41,46 +57,45 @@ export default function ComparePage() {
       <main className="min-h-screen bg-[var(--color-background)] text-[var(--color-text-primary)]">
         <Navbar />
         <div className="max-w-4xl mx-auto px-6 py-24 text-center">
-          <div className="mb-8">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center">
-              <GitCompare
-                size={32}
-                className="text-[var(--color-text-muted)]"
-              />
-            </div>
-            <h1 className="text-2xl font-bold mb-3 text-[var(--color-text-primary)]">
-              Compare Campaigns
-            </h1>
-            <p className="text-[var(--color-text-muted)] mb-6 max-w-md mx-auto">
-              Select up to 4 campaigns to compare their funding progress,
-              goals, and performance side by side.
-            </p>
-          </div>
-
-          {/* Inline campaign selector for empty state */}
-          <div className="flex justify-center mb-6">
-            <CampaignSelector />
-          </div>
-
-          <p className="text-sm text-[var(--color-text-muted)]">
-            or{" "}
-            <Link
-              href="/campaigns"
-              className="text-[var(--color-brand)] hover:text-[var(--color-brand-hover)] underline transition"
-            >
-              browse campaigns
-            </Link>{" "}
-            and use the compare checkbox
+          <p className="text-gray-400 mb-4">
+            No campaigns selected for comparison.
           </p>
+          <Link
+            href="/campaigns"
+            className="text-indigo-400 hover:text-indigo-300 underline"
+          >
+            Browse campaigns
+          </Link>
         </div>
       </main>
     );
   }
 
-  const VIEW_MODES: { label: string; value: ViewMode; icon: React.ReactNode }[] = [
-    { label: "Both", value: "both", icon: null },
-    { label: "Table", value: "table", icon: <Table2 size={14} /> },
-    { label: "Chart", value: "chart", icon: <BarChart3 size={14} /> },
+  const rows: {
+    label: string;
+    render: (c: (typeof ALL_CAMPAIGNS)[0]) => React.ReactNode;
+  }[] = [
+    { label: "Status", render: (c) => c.status },
+    { label: "Raised", render: (c) => formatXlm(c.raised, null) },
+    { label: "Goal", render: (c) => formatXlm(c.goal, null) },
+    {
+      label: "Progress",
+      render: (c) => {
+        const pct = c.goal > 0 ? (c.raised / c.goal) * 100 : 0;
+        return (
+          <div className="space-y-1">
+            <ProgressBar progress={pct} />
+            <span className="text-xs text-gray-400">{pct.toFixed(1)}%</span>
+          </div>
+        );
+      },
+    },
+    {
+      label: "Deadline",
+      render: (c) => new Date(c.deadline).toLocaleDateString(),
+    },
+    { label: "Contributors", render: (c) => c.contributorCount ?? "—" },
+    { label: "Token", render: (c) => c.token },
   ];
 
   return (
@@ -92,19 +107,14 @@ export default function ComparePage() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => router.back()}
-              aria-label="Go back"
-              className="p-2 rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-elevated)] transition"
+              className="text-gray-400 hover:text-white transition"
             >
               <ArrowLeft size={20} />
             </button>
-            <div>
-              <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">
-                Compare Campaigns
-              </h1>
-              <p className="text-sm text-[var(--color-text-muted)]">
-                {campaigns.length} of 4 campaigns selected
-              </p>
-            </div>
+            <h1 className="text-2xl font-bold">Compare Campaigns</h1>
+            <span className="text-sm text-gray-500">
+              ({campaigns.length} selected)
+            </span>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
@@ -134,10 +144,15 @@ export default function ComparePage() {
             {/* Actions */}
             <button
               onClick={handleShare}
-              aria-label="Share comparison"
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--color-surface-elevated)] hover:bg-[var(--color-border-subtle)] text-sm text-[var(--color-text-secondary)] transition"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-sm transition"
+              aria-label="Copy comparison link"
             >
-              <Share2 size={14} /> Share
+              {copied ? (
+                <Check size={14} className="text-green-400" />
+              ) : (
+                <Share2 size={14} />
+              )}
+              {copied ? "Copied!" : "Share"}
             </button>
             <button
               onClick={clear}
@@ -149,18 +164,49 @@ export default function ComparePage() {
           </div>
         </div>
 
-        {/* Content */}
-        <div className="space-y-8">
-          {(viewMode === "table" || viewMode === "both") && (
-            <ComparisonTable
-              campaigns={campaigns}
-              onRemove={(id) => toggle(id)}
-            />
-          )}
-
-          {(viewMode === "chart" || viewMode === "both") && (
-            <ComparisonChart campaigns={campaigns} />
-          )}
+        <div className="overflow-x-auto rounded-2xl border border-gray-800">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-800">
+                <th className="text-left px-4 py-3 text-gray-500 font-medium w-32">
+                  Metric
+                </th>
+                {campaigns.map((c) => (
+                  <th key={c.id} className="px-4 py-3 text-left">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="font-semibold text-white">
+                        {c.title}
+                      </span>
+                      <button
+                        onClick={() => toggle(c.id)}
+                        aria-label={`Remove ${c.title} from comparison`}
+                        className="text-gray-600 hover:text-gray-300 transition flex-shrink-0"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => (
+                <tr
+                  key={row.label}
+                  className={i % 2 === 0 ? "bg-gray-900/40" : ""}
+                >
+                  <td className="px-4 py-3 text-gray-500 font-medium">
+                    {row.label}
+                  </td>
+                  {campaigns.map((c) => (
+                    <td key={c.id} className="px-4 py-3 text-gray-200">
+                      {row.render(c)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
 
         {/* Footer hint */}

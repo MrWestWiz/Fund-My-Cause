@@ -2,14 +2,23 @@
 
 import React, { useRef, useEffect } from "react";
 import { Bell, Check, Trash2, Coins, Trophy, Clock, Info } from "lucide-react";
-import { useNotifications, Notification, NotificationType } from "@/context/NotificationContext";
+import {
+  useNotifications,
+  Notification,
+  NotificationType,
+} from "@/context/NotificationContext";
+import { useNotificationPreferences } from "@/context/NotificationPreferencesContext";
 
 function typeIcon(type: NotificationType) {
   switch (type) {
-    case "contribution": return <Coins size={14} className="text-indigo-400" />;
-    case "goal_reached": return <Trophy size={14} className="text-green-400" />;
-    case "deadline": return <Clock size={14} className="text-yellow-400" />;
-    default: return <Info size={14} className="text-gray-400" />;
+    case "contribution":
+      return <Coins size={14} className="text-indigo-400" />;
+    case "goal_reached":
+      return <Trophy size={14} className="text-green-400" />;
+    case "deadline":
+      return <Clock size={14} className="text-yellow-400" />;
+    default:
+      return <Info size={14} className="text-gray-400" />;
   }
 }
 
@@ -29,7 +38,9 @@ interface Props {
 }
 
 export function NotificationDropdown({ open, onClose }: Props) {
-  const { notifications, markAsRead, markAllAsRead, clearAll } = useNotifications();
+  const { notifications, markAsRead, markAllAsRead, clearAll } =
+    useNotifications();
+  const { prefs } = useNotificationPreferences();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -40,7 +51,8 @@ export function NotificationDropdown({ open, onClose }: Props) {
     return () => document.removeEventListener("mousedown", handler);
   }, [open, onClose]);
 
-  if (!open) return null;
+  // All hooks above — safe to early-return now
+  if (!prefs.channels.inApp || !open) return null;
 
   return (
     <div
@@ -84,9 +96,15 @@ export function NotificationDropdown({ open, onClose }: Props) {
             >
               <div className="mt-0.5 shrink-0">{typeIcon(n.type)}</div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{n.title}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{n.message}</p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{timeAgo(n.timestamp)}</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                  {n.title}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">
+                  {n.message}
+                </p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                  {timeAgo(n.timestamp)}
+                </p>
               </div>
               {!n.read && (
                 <div className="w-2 h-2 rounded-full bg-indigo-500 mt-1.5 shrink-0" />
