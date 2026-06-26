@@ -65,6 +65,61 @@ async function startServer() {
       res.json({ status: "ok", timestamp: new Date().toISOString() });
     });
 
+    // Status endpoint — aggregates component health
+    app.get("/status", async (req, res) => {
+      const start = Date.now();
+
+      // Check Redis/cache
+      let cacheStatus: "healthy" | "degraded" | "unhealthy" = "unhealthy";
+      let cacheLatencyMs = -1;
+      try {
+        const t0 = Date.now();
+        await redis.ping();
+        cacheLatencyMs = Date.now() - t0;
+        cacheStatus = cacheLatencyMs < 200 ? "healthy" : "degraded";
+      } catch {
+        cacheStatus = "unhealthy";
+      }
+
+      // Check RPC connectivity
+      let rpcStatus: "healthy" | "degraded" | "unhealthy" = "unhealthy";
+      let rpcLatencyMs = -1;
+      try {
+        const t0 = Date.now();
+        const resp = await fetch(RPC_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getHealth", params: [] }),
+          signal: AbortSignal.timeout(3000),
+        });
+        rpcLatencyMs = Date.now() - t0;
+        rpcStatus = resp.ok ? (rpcLatencyMs < 500 ? "healthy" : "degraded") : "unhealthy";
+      } catch {
+        rpcStatus = "unhealthy";
+      }
+
+      const apiStatus = "healthy";
+      const overallStatus =
+        cacheStatus === "unhealthy" || rpcStatus === "unhealthy"
+          ? "degraded"
+          : "healthy";
+
+      const body = {
+        status: overallStatus,
+        version: process.env.npm_package_version ?? "unknown",
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString(),
+        components: {
+          api:   { status: apiStatus,   latencyMs: Date.now() - start },
+          cache: { status: cacheStatus, latencyMs: cacheLatencyMs },
+          rpc:   { status: rpcStatus,   latencyMs: rpcLatencyMs },
+        },
+      };
+
+      const httpStatus = overallStatus === "healthy" ? 200 : 207;
+      res.status(httpStatus).json(body);
+    });
+
     // Metrics endpoint
     app.get("/metrics", async (req, res) => {
       try {
