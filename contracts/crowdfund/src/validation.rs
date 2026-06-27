@@ -2,7 +2,7 @@
 ///
 /// This module contains validation functions for campaign parameters and operations.
 use crate::errors::ContractError;
-use crate::types::Status;
+use crate::types::{Category, Status};
 use soroban_sdk::Address;
 
 /// Validates campaign initialization parameters.
@@ -384,4 +384,27 @@ pub fn validate_goal_not_overflow(goal: i128) -> Result<(), ContractError> {
         return Err(ContractError::GoalOverflow);
     }
     Ok(())
+}
+
+/// Validates that a category is one of the allowed on-chain values.
+///
+/// Because `Category` is a `#[contracttype]` enum, Soroban will reject unknown
+/// discriminants at decode time. This function provides an explicit, in-contract
+/// check that returns a clear error for any future path that might bypass the
+/// normal ABI decode (e.g., direct storage writes in tests or upgrades).
+///
+/// # Returns
+/// * `Ok(())` for any valid `Category` variant
+/// * `Err(ContractError::InvalidCategory)` for unrecognised values
+pub fn validate_category(category: &Category) -> Result<(), ContractError> {
+    match category {
+        Category::Charity
+        | Category::Technology
+        | Category::Creative
+        | Category::Event
+        | Category::Personal
+        | Category::Other => Ok(()),
+        #[allow(unreachable_patterns)]
+        _ => Err(ContractError::InvalidCategory),
+    }
 }

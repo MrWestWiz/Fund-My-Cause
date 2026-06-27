@@ -485,6 +485,7 @@ pub struct EventInitialized {
     pub creator: Address,
     pub goal: i128,
     pub deadline: u64,
+    pub category: Category,
 }
 
 /// Emitted when a contribution is accepted.

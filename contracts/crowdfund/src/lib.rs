@@ -50,6 +50,7 @@
 #![allow(clippy::too_many_arguments)]
 
 mod errors;
+mod recurring;
 mod security;
 mod storage;
 mod types;
@@ -299,6 +300,7 @@ impl CrowdfundContract {
         }
         validate_string_length(&title, 64)?;
         validate_string_length(&description, 512)?;
+        validate_category(&category)?;
 
         if let Some(ref config) = platform_config {
             validate_fee_bps(config.fee_bps)?;
@@ -366,6 +368,7 @@ impl CrowdfundContract {
                 creator,
                 goal,
                 deadline,
+                category,
             },
         );
 
@@ -1750,6 +1753,7 @@ impl CrowdfundContract {
                 creator,
                 goal,
                 deadline,
+                category,
             },
         );
         env.events().publish(
@@ -1917,6 +1921,7 @@ impl CrowdfundContract {
         if status != Status::Active {
             return Err(ContractError::NotActive);
         }
+        validate_category(&category)?;
         let creator: Address = inst.get(&KEY_CREATOR).unwrap();
         creator.require_auth();
 
@@ -2065,31 +2070,7 @@ impl CrowdfundContract {
         interval: u64,
         end_date: u64,
     ) -> Result<(), ContractError> {
-        contributor.require_auth();
-
-        validate_recurring_plan(amount, interval, end_date, env.ledger().timestamp())?;
-
-        let plan = RecurringPlan {
-            amount,
-            interval,
-            end_date,
-            last_executed: env.ledger().timestamp(),
-        };
-
-        let key = DataKey::RecurringPlan(contributor.clone());
-        env.storage().persistent().set(&key, &plan);
-        env.storage().persistent().extend_ttl(&key, 100, 100);
-
-        env.events().publish(
-            ("campaign", "recurring_setup"),
-            EventRecurringSetup {
-                contributor,
-                amount,
-                interval,
-                end_date,
-            },
-        );
-        Ok(())
+        recurring::setup(&env, contributor, amount, interval, end_date)
     }
 
     /// Executes pending recurring contributions for a contributor.
@@ -2105,56 +2086,7 @@ impl CrowdfundContract {
     /// * `Ok(())` on success
     /// * `Err(ContractError::InvalidRecurringPlan)` if no plan exists or plan expired
     pub fn execute_recurring(env: Env, contributor: Address) -> Result<(), ContractError> {
-        let key = DataKey::RecurringPlan(contributor.clone());
-        let mut plan: RecurringPlan = env
-            .storage()
-            .persistent()
-            .get(&key)
-            .ok_or(ContractError::InvalidRecurringPlan)?;
-
-        let now = env.ledger().timestamp();
-        if now > plan.end_date {
-            return Err(ContractError::InvalidRecurringPlan);
-        }
-        if now < plan.last_executed + plan.interval {
-            return Err(ContractError::InvalidRecurringPlan);
-        }
-
-        plan.last_executed = now;
-        env.storage().persistent().set(&key, &plan);
-
-        // Cache instance storage handle
-        let inst = env.storage().instance();
-        let token: Address = inst.get(&KEY_TOKEN).unwrap();
-        token::Client::new(&env, &token).transfer(
-            &contributor,
-            &env.current_contract_address(),
-            &plan.amount,
-        );
-
-        let contrib_key = DataKey::Contribution(contributor.clone());
-        let prev: i128 = env.storage().persistent().get(&contrib_key).unwrap_or(0);
-        let new_amount = prev
-            .checked_add(plan.amount)
-            .ok_or(ContractError::Overflow)?;
-        env.storage().persistent().set(&contrib_key, &new_amount);
-
-        let total: i128 = inst.get(&KEY_TOTAL).unwrap();
-        inst.set(
-            &KEY_TOTAL,
-            &total
-                .checked_add(plan.amount)
-                .ok_or(ContractError::Overflow)?,
-        );
-
-        env.events().publish(
-            ("campaign", "recurring_executed"),
-            EventRecurringExecuted {
-                contributor,
-                amount: plan.amount,
-            },
-        );
-        Ok(())
+        recurring::execute(&env, contributor)
     }
 
     /// Cancels a recurring contribution plan.
@@ -2168,14 +2100,7 @@ impl CrowdfundContract {
     /// # Returns
     /// * `Ok(())` on success
     pub fn cancel_recurring(env: Env, contributor: Address) -> Result<(), ContractError> {
-        contributor.require_auth();
-        let key = DataKey::RecurringPlan(contributor.clone());
-        env.storage().persistent().remove(&key);
-        env.events().publish(
-            ("campaign", "recurring_cancelled"),
-            EventRecurringCancelled { contributor },
-        );
-        Ok(())
+        recurring::cancel(&env, contributor)
     }
 
     /// Proposes a deadline extension and initiates voting.

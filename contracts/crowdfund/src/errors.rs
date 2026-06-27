@@ -128,4 +128,6 @@ pub enum ContractError {
     InvalidInput = 58,
     /// Requested item not found
     NotFound = 59,
+    /// Invalid campaign category
+    InvalidCategory = 60,
 }

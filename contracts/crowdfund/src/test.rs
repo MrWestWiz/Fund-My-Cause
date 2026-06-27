@@ -2051,3 +2051,33 @@ fn matching_refund_sponsor_manual_after_cancellation() {
     assert_eq!(client.get_matching_pool(), 0);
     let _ = creator;
 }
+
+// ── #680 Recurring contributions ─────────────────────────────────────────────
+
+#[test]
+fn execute_recurring_after_cancel_is_rejected() {
+    let env = Env::default();
+    let (_creator, _token_id, client, _) = setup_contract(&env, 1_000_000, 1_000_000, 100);
+
+    let contributor = Address::generate(&env);
+    env.ledger().set_timestamp(1_000);
+    client.setup_recurring(&contributor, &500, &3_600, &100_000);
+    client.cancel_recurring(&contributor);
+
+    // Plan is gone; execution must fail
+    let r = client.try_execute_recurring(&contributor);
+    assert_eq!(r.err(), Some(Ok(ContractError::InvalidRecurringPlan)));
+}
+
+#[test]
+fn execute_recurring_no_plan_is_rejected() {
+    let env = Env::default();
+    let (_creator, _token_id, client, _) = setup_contract(&env, 1_000_000, 1_000_000, 100);
+
+    let contributor = Address::generate(&env);
+    env.ledger().set_timestamp(1_000);
+
+    // No plan was ever set up
+    let r = client.try_execute_recurring(&contributor);
+    assert_eq!(r.err(), Some(Ok(ContractError::InvalidRecurringPlan)));
+}
