@@ -299,6 +299,7 @@ impl CrowdfundContract {
         }
         validate_string_length(&title, 64)?;
         validate_string_length(&description, 512)?;
+        validate_category(&category)?;
 
         if let Some(ref config) = platform_config {
             validate_fee_bps(config.fee_bps)?;
@@ -366,6 +367,7 @@ impl CrowdfundContract {
                 creator,
                 goal,
                 deadline,
+                category,
             },
         );
 
@@ -1750,6 +1752,7 @@ impl CrowdfundContract {
                 creator,
                 goal,
                 deadline,
+                category,
             },
         );
         env.events().publish(
@@ -1917,6 +1920,7 @@ impl CrowdfundContract {
         if status != Status::Active {
             return Err(ContractError::NotActive);
         }
+        validate_category(&category)?;
         let creator: Address = inst.get(&KEY_CREATOR).unwrap();
         creator.require_auth();
 

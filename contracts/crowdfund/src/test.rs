@@ -2051,3 +2051,25 @@ fn matching_refund_sponsor_manual_after_cancellation() {
     assert_eq!(client.get_matching_pool(), 0);
     let _ = creator;
 }
+
+// ── #693 On-chain campaign categories ────────────────────────────────────────
+
+#[test]
+fn category_is_set_at_init_and_retrievable() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_creator, _token_id, client, _) = setup_contract(&env, 1_000_000, 1_000_000, 100);
+    // setup_contract uses Category::Other
+    assert_eq!(client.get_category(), Category::Other);
+}
+
+#[test]
+fn update_category_changes_stored_value() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_creator, _token_id, client, _) = setup_contract(&env, 1_000_000, 1_000_000, 100);
+    client.update_category(&Category::Technology);
+    assert_eq!(client.get_category(), Category::Technology);
+}
