@@ -486,6 +486,7 @@ pub struct EventInitialized {
     pub goal: i128,
     pub deadline: u64,
     pub category: Category,
+    pub schema_version: u32,
 }
 
 /// Emitted when a contribution is accepted.
@@ -500,6 +501,7 @@ pub struct EventContributed {
     pub new_total: i128,
     /// Matched amount added by a sponsor (0 if no matching configured)
     pub matched_amount: i128,
+    pub schema_version: u32,
 }
 
 /// Emitted when the creator withdraws funds after a successful campaign.
@@ -515,6 +517,7 @@ pub struct EventWithdrawn {
     pub fee: i128,
     /// Net amount transferred to the creator
     pub payout: i128,
+    pub schema_version: u32,
 }
 
 /// Emitted when a contributor claims a full refund.
@@ -525,6 +528,7 @@ pub struct EventWithdrawn {
 pub struct EventRefunded {
     pub contributor: Address,
     pub amount: i128,
+    pub schema_version: u32,
 }
 
 /// Emitted when a contributor claims a partial refund before the deadline.
@@ -1523,4 +1527,42 @@ pub struct EventQfContribution {
     pub cumulative: i128,
     /// Distinct-contributor count after this contribution
     pub contributor_count: u32,
+}
+
+// ── Issue #703: Event schema versioning ──────────────────────────────────────
+
+/// Current event schema version.  Bump this when the shape of any emitted
+/// event payload changes in a backwards-incompatible way so that indexers can
+/// adapt without guessing.
+pub const EVENT_SCHEMA_VERSION: u32 = 1;
+
+// ── Issue #704: Withdrawal streaming ─────────────────────────────────────────
+
+/// Optional streaming / scheduled-release configuration for creator withdrawals.
+///
+/// When set, the creator cannot withdraw as a lump sum after the campaign
+/// succeeds.  Instead, funds unlock linearly between `start_time` and
+/// `end_time`.  The creator calls `claim_stream()` at any point after
+/// `start_time` to pull whatever has vested since their last claim.
+#[derive(Clone, PartialEq, Debug)]
+#[contracttype]
+pub struct StreamConfig {
+    /// Unix timestamp when streaming begins (must be >= campaign deadline)
+    pub start_time: u64,
+    /// Unix timestamp when all funds are fully unlocked
+    pub end_time: u64,
+    /// Amount already claimed by the creator (in stroops)
+    pub claimed: i128,
+}
+
+/// Emitted when a stream claim is executed.
+///
+/// Event topic: `("campaign", "stream_claimed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventStreamClaimed {
+    pub creator: Address,
+    pub amount: i128,
+    pub remaining: i128,
+    pub schema_version: u32,
 }

@@ -4,7 +4,7 @@
 use soroban_sdk::Symbol;
 
 /// Contract version for upgrades and compatibility tracking
-pub const CONTRACT_VERSION: u32 = 5;
+pub const CONTRACT_VERSION: u32 = 6;
 
 /// Minimum supported version for migration (versions below this require a full re-deploy)
 pub const MIN_SUPPORTED_VERSION: u32 = 1;
@@ -122,6 +122,10 @@ pub const KEY_EMERGENCY_PAUSE: Symbol = soroban_sdk::symbol_short!("EMPAUSE");
 // ── Issue #605: Security Hardening ───────────────────────────────────────────
 /// Storage key for reentrancy lock (prevents reentrancy attacks)
 pub const KEY_REENTRANCY_LOCK: Symbol = soroban_sdk::symbol_short!("REENTLK");
+
+// ── Issue #704: Withdrawal streaming ─────────────────────────────────────────
+/// Storage key for optional streaming/scheduled-release config
+pub const KEY_STREAM: Symbol = soroban_sdk::symbol_short!("STREAM");
 
 use soroban_sdk::{Address, Symbol as SorobanSymbol};
 

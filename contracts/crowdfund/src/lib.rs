@@ -78,6 +78,8 @@ pub use storage::{
     KEY_GOVERNANCE_CONFIG, KEY_GOVERNANCE_NONCE, KEY_EMERGENCY_PAUSE,
     // #605 Security Hardening
     KEY_REENTRANCY_LOCK,
+    // #704 Withdrawal streaming
+    KEY_STREAM,
 };
 pub use types::{
     CampaignAnalytics,
@@ -210,6 +212,11 @@ pub use types::{
     QfContributorInput,
     QfInputs,
     EventQfContribution,
+    // #703 Event schema versioning
+    EVENT_SCHEMA_VERSION,
+    // #704 Withdrawal streaming
+    StreamConfig,
+    EventStreamClaimed,
 };
 pub use validation::*;
 
@@ -369,6 +376,7 @@ impl CrowdfundContract {
                 goal,
                 deadline,
                 category,
+                schema_version: EVENT_SCHEMA_VERSION,
             },
         );
 
@@ -470,7 +478,7 @@ impl CrowdfundContract {
                 .checked_add(amount)
                 .ok_or(ContractError::Overflow)?;
             if new_total > max {
-                return Err(ContractError::ExceedsMaximum);
+                return Err(ContractError::ContributorCapExceeded);
             }
         }
 
@@ -706,6 +714,7 @@ impl CrowdfundContract {
                 amount,
                 new_total: new_contrib,
                 matched_amount,
+                schema_version: EVENT_SCHEMA_VERSION,
             },
         );
 
@@ -833,6 +842,148 @@ impl CrowdfundContract {
                 total,
                 fee,
                 payout,
+                schema_version: EVENT_SCHEMA_VERSION,
+            },
+        );
+        Ok(())
+    }
+
+    /// Configures optional streaming / scheduled withdrawal for the creator.
+    ///
+    /// Must be called before the campaign deadline.  When a `StreamConfig` is
+    /// set, the normal `withdraw()` lump-sum path is blocked; the creator must
+    /// use `claim_stream()` instead.
+    ///
+    /// # Arguments
+    /// * `start_time` — Unix timestamp when streaming begins (must be >= current time)
+    /// * `end_time`   — Unix timestamp when all funds are fully unlocked (must be > start_time)
+    pub fn set_stream_config(
+        env: Env,
+        start_time: u64,
+        end_time: u64,
+    ) -> Result<(), ContractError> {
+        let inst = env.storage().instance();
+        let creator: Address = inst.get(&KEY_CREATOR).unwrap();
+        creator.require_auth();
+
+        let now = env.ledger().timestamp();
+        if start_time <= now || end_time <= start_time {
+            return Err(ContractError::InvalidInput);
+        }
+
+        let status: Status = inst.get(&KEY_STATUS).unwrap();
+        if status != Status::Active {
+            return Err(ContractError::NotActive);
+        }
+
+        inst.set(
+            &KEY_STREAM,
+            &StreamConfig {
+                start_time,
+                end_time,
+                claimed: 0,
+            },
+        );
+        inst.extend_ttl(17280, 518400);
+        Ok(())
+    }
+
+    /// Claims the portion of streamed funds that has unlocked since the last claim.
+    ///
+    /// After a successful campaign (goal met, deadline passed) and once
+    /// `start_time` has been reached, the creator can call this at any time to
+    /// pull whatever fraction of the total has vested linearly.
+    ///
+    /// # Errors
+    /// * `StreamNotConfigured`   — no `StreamConfig` set
+    /// * `CampaignStillActive`   — deadline not yet passed
+    /// * `GoalNotReached`        — total raised < goal
+    /// * `StreamNotYetClaimable` — current time is before `start_time`
+    /// * `StreamFullyClaimed`    — nothing left to claim
+    pub fn claim_stream(env: Env) -> Result<(), ContractError> {
+        let inst = env.storage().instance();
+        let creator: Address = inst.get(&KEY_CREATOR).unwrap();
+        creator.require_auth();
+
+        let mut stream: StreamConfig = inst
+            .get(&KEY_STREAM)
+            .ok_or(ContractError::StreamNotConfigured)?;
+
+        let now = env.ledger().timestamp();
+        let deadline: u64 = inst.get(&KEY_DEADLINE).unwrap();
+        let goal: i128 = inst.get(&KEY_GOAL).unwrap();
+        let total: i128 = inst.get(&KEY_TOTAL).unwrap();
+        let status: Status = inst.get(&KEY_STATUS).unwrap();
+
+        // Campaign must be complete (either still Active past deadline, or Successful)
+        if status == Status::Active && now < deadline {
+            return Err(ContractError::CampaignStillActive);
+        }
+        if total < goal && status != Status::Successful {
+            return Err(ContractError::GoalNotReached);
+        }
+        if now < stream.start_time {
+            return Err(ContractError::StreamNotYetClaimable);
+        }
+
+        // Compute vested fraction linearly between start_time and end_time
+        let vested_fraction = if now >= stream.end_time {
+            total
+        } else {
+            let elapsed = now - stream.start_time;
+            let duration = stream.end_time - stream.start_time;
+            total * elapsed as i128 / duration as i128
+        };
+
+        let claimable = vested_fraction - stream.claimed;
+        if claimable <= 0 {
+            return Err(ContractError::StreamFullyClaimed);
+        }
+
+        // Deduct platform fee pro-rata on first claim if configured
+        let platform_config: Option<PlatformConfig> = inst.get(&KEY_PLATFORM);
+        let fee = if stream.claimed == 0 {
+            if let Some(ref config) = platform_config {
+                let f = total * config.fee_bps as i128 / 10_000;
+                let token_address: Address = inst.get(&KEY_TOKEN).unwrap();
+                token::Client::new(&env, &token_address).transfer(
+                    &env.current_contract_address(),
+                    &config.address,
+                    &f,
+                );
+                f
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+
+        let payout = claimable - fee;
+        let token_address: Address = inst.get(&KEY_TOKEN).unwrap();
+        token::Client::new(&env, &token_address).transfer(
+            &env.current_contract_address(),
+            &creator,
+            &payout,
+        );
+
+        stream.claimed += claimable;
+        let remaining = total - stream.claimed;
+
+        inst.set(&KEY_STREAM, &stream);
+        if remaining == 0 {
+            inst.set(&KEY_STATUS, &Status::Successful);
+            inst.set(&KEY_TOTAL, &0i128);
+        }
+        inst.extend_ttl(17280, 518400);
+
+        env.events().publish(
+            ("campaign", "stream_claimed"),
+            EventStreamClaimed {
+                creator,
+                amount: payout,
+                remaining,
+                schema_version: EVENT_SCHEMA_VERSION,
             },
         );
         Ok(())
@@ -1236,6 +1387,7 @@ impl CrowdfundContract {
                 EventRefunded {
                     contributor,
                     amount,
+                    schema_version: EVENT_SCHEMA_VERSION,
                 },
             );
         }
@@ -1291,6 +1443,7 @@ impl CrowdfundContract {
                     EventRefunded {
                         contributor,
                         amount,
+                        schema_version: EVENT_SCHEMA_VERSION,
                     },
                 );
                 refunded += 1;
@@ -1754,6 +1907,7 @@ impl CrowdfundContract {
                 goal,
                 deadline,
                 category,
+                schema_version: EVENT_SCHEMA_VERSION,
             },
         );
         env.events().publish(
