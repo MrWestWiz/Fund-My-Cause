@@ -12,6 +12,7 @@ import type { Campaign } from "@/types/campaign";
 import { useComparison } from "@/context/ComparisonContext";
 import { useBookmarks } from "@/context/BookmarkContext";
 import { getCategoryBySlug } from "@/lib/categories";
+import { getFallbackImage, isValidImageUri } from "@/lib/imageValidation";
 import { useTranslations } from "next-intl";
 
 export interface CampaignCardProps {
@@ -91,6 +92,12 @@ export function CampaignCard({
   const isEnded = !isFunded && new Date(campaign.deadline) < new Date();
   const isDisabled = isFunded || isEnded;
 
+  // Resolve image: use campaign.image if valid, otherwise deterministic fallback
+  const fallbackSrc = getFallbackImage(campaign.id);
+  const [imgSrc, setImgSrc] = React.useState<string>(
+    isValidImageUri(campaign.image) ? campaign.image : fallbackSrc,
+  );
+
   const { toggle: toggleCompare, isSelected, selected } = useComparison();
   const { toggle: toggleBookmark, isBookmarked } = useBookmarks();
   const compared = isSelected(campaign.id);
@@ -111,11 +118,12 @@ export function CampaignCard({
       <div className="relative">
         <div className="relative w-full h-48 sm:h-48">
           <Image
-            src={campaign.image}
+            src={imgSrc}
             alt={`${campaign.title} - campaign header image`}
             fill
             className="object-cover"
             sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, 33vw"
+            onError={() => setImgSrc(fallbackSrc)}
           />
         </div>
         {isFunded && <StatusBadge status="funded" label={t("funded")} />}

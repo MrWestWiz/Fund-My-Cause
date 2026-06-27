@@ -6,7 +6,6 @@ import { Navbar } from "@/components/layout/Navbar";
 import { WalletGuard } from "@/components/WalletGuard";
 import { useWallet } from "@/context/WalletContext";
 import { buildInitializeTx, submitSignedTx } from "@/lib/soroban";
-import { uploadToPinata } from "@/lib/pinata";
 import {
   validateTitle,
   validateDescription,
@@ -23,6 +22,7 @@ import { useCampaignDraft } from "@/hooks/useCampaignDraft";
 import { DraftIndicator } from "@/components/ui/DraftIndicator";
 import { CampaignPreview } from "@/components/ui/CampaignPreview";
 import { VideoUploader } from "@/components/ui/VideoUploader";
+import { ImageUploader } from "@/components/ui/ImageUploader";
 import type { FAQ, TeamMember } from "@/types/campaign";
 import {
   CheckCircle2,
@@ -222,9 +222,6 @@ function Step1({
   );
 }
 
-const MAX_SIZE = 5 * 1024 * 1024;
-const ACCEPTED = ["image/png", "image/jpeg", "image/webp"];
-
 function Step2({
   data,
   set,
@@ -232,67 +229,15 @@ function Step2({
   data: FormData;
   set: (k: keyof FormData, v: string) => void;
 }) {
-  const [preview, setPreview] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!ACCEPTED.includes(file.type)) {
-      setUploadError("Only PNG, JPG, or WebP allowed.");
-      return;
-    }
-    if (file.size > MAX_SIZE) {
-      setUploadError("File must be under 5 MB.");
-      return;
-    }
-
-    setUploadError(null);
-    setPreview(URL.createObjectURL(file));
-    setUploading(true);
-    try {
-      const cid = await uploadToPinata(file);
-      set("imageUrl", cid);
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed.");
-    } finally {
-      setUploading(false);
-    }
-  };
-
   return (
     <div className="space-y-4">
       <Field label="Campaign Image (PNG / JPG / WebP, max 5 MB)">
-        <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-700 rounded-xl cursor-pointer hover:border-indigo-500 transition">
-          <span className="text-sm text-gray-400">
-            {uploading ? "Uploading…" : "Click to select a file"}
-          </span>
-          <input
-            type="file"
-            accept={ACCEPTED.join(",")}
-            className="hidden"
-            onChange={handleFile}
-            disabled={uploading}
-          />
-        </label>
-      </Field>
-
-      {uploadError && <p className="text-red-400 text-sm">{uploadError}</p>}
-
-      {preview && (
-        <img
-          src={preview}
-          alt="preview"
-          className="w-full h-48 object-cover rounded-xl border border-gray-700"
+        <ImageUploader
+          onUpload={(uri) => set("imageUrl", uri)}
+          onClear={() => set("imageUrl", "")}
+          currentUri={data.imageUrl}
         />
-      )}
-
-      {data.imageUrl && !uploading && (
-        <p className="text-xs text-gray-500 break-all">
-          Stored as: {data.imageUrl}
-        </p>
-      )}
+      </Field>
 
       <Field label="Campaign Video (optional — Upload MP4/WebM or provide YouTube/Vimeo URL)">
         <div className="space-y-3">
