@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { TransactionStatus, TxStatus } from "@/components/ui/TransactionStatus";
 import { useToast } from "@/components/ui/Toast";
+import { ReceiptModal } from "@/components/ui/ReceiptModal";
 import { contribute } from "@/lib/contract";
 import { useAccountExists } from "@/hooks/useAccountExists";
 import { useTranslations } from "next-intl";
@@ -55,6 +56,7 @@ export function PledgeModal({
   const [txHash, setTxHash] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [pendingTx, setPendingTx] = useState(false);
+  const [showReceipt, setShowReceipt] = useState(false);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = "pledge-modal-title";
@@ -142,6 +144,7 @@ export function PledgeModal({
       setTxStatus("confirming");
       setTxHash(hash);
       setTxStatus("success");
+      setShowReceipt(true);
       addToast("Pledge submitted successfully!", "success", hash);
       onSuccess?.();
     } catch (err) {
@@ -274,6 +277,24 @@ export function PledgeModal({
           </>
         )}
       </div>
+
+      {/* Receipt Modal */}
+      {showReceipt && txHash && address && (
+        <ReceiptModal
+          receipt={{
+            campaignTitle,
+            amount: parseFloat(amount),
+            txHash,
+            timestamp: new Date(),
+            contractId,
+            contributorAddress: address,
+          }}
+          onClose={() => {
+            setShowReceipt(false);
+            onClose();
+          }}
+        />
+      )}
     </div>
   );
 }
