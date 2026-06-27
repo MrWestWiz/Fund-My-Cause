@@ -8,11 +8,30 @@ export default defineConfig({
     baseURL: "http://localhost:3000",
     video: "retain-on-failure",
     trace: "retain-on-failure",
+    // Visual regression: store screenshots next to spec files so baselines
+    // live in version control and are easy to diff/review.
+    screenshot: "only-on-failure",
   },
+  // Visual-regression snapshot directory (checked into git for baseline review)
+  snapshotDir: "./e2e/snapshots",
+  // Baseline update workflow: run `npx playwright test --update-snapshots`
+  // CI will fail if screenshots diverge beyond the per-test threshold.
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "firefox",  use: { ...devices["Desktop Firefox"] } },
-    { name: "webkit",   use: { ...devices["Desktop Safari"] } },
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "firefox",
+      use: { ...devices["Desktop Firefox"] },
+      // Visual regression is Chromium-only to keep snapshots consistent
+      testIgnore: "**/visual-regression.spec.ts",
+    },
+    {
+      name: "webkit",
+      use: { ...devices["Desktop Safari"] },
+      testIgnore: "**/visual-regression.spec.ts",
+    },
   ],
   webServer: {
     command: "npm run dev --workspace=apps/interface",
