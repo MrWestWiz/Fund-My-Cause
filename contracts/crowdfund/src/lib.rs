@@ -451,6 +451,11 @@ impl CrowdfundContract {
         let total: i128 = inst.get(&KEY_TOTAL).unwrap();
         let count: u32 = inst.get(&DataKey::ContributorCount).unwrap();
         let largest: i128 = inst.get(&DataKey::LargestContribution).unwrap();
+        // ── Hoist remaining instance reads to avoid re-fetching after transfer ─
+        let platform_config: Option<PlatformConfig> = inst.get(&KEY_PLATFORM);
+        let gross_total: i128 = inst.get(&KEY_GROSS_TOTAL).unwrap_or(0);
+        let insurance_config: Option<InsuranceConfig> = inst.get(&KEY_INSURANCE);
+        let matching_config: Option<MatchingConfig> = inst.get(&DataKey::MatchingConfig);
 
         // ── Validate status ───────────────────────────────────────────────────
         if status == Status::Paused {
@@ -562,10 +567,10 @@ impl CrowdfundContract {
 
         // ── #698: Per-contribution fee deduction (OnContribution mode) ────────
         // Track gross total regardless of fee mode so stats can report both.
-        let gross_total: i128 = inst.get(&KEY_GROSS_TOTAL).unwrap_or(0);
+        // Uses the `gross_total` value hoisted from the upfront batch above.
         inst.set(&KEY_GROSS_TOTAL, &(gross_total.checked_add(amount).unwrap_or(gross_total)));
 
-        let contrib_fee: i128 = if let Some(ref config) = inst.get::<_, PlatformConfig>(&KEY_PLATFORM) {
+        let contrib_fee: i128 = if let Some(ref config) = platform_config {
             if config.fee_mode == FeeMode::OnContribution {
                 let f = amount * config.fee_bps as i128 / 10_000;
                 if f > 0 {
@@ -589,8 +594,8 @@ impl CrowdfundContract {
         // The full `amount` is held in the contract, but the insurance portion
         // is bookkept separately: it does not count toward the funding goal
         // and is paid back to the contributor if the campaign fails.
-        let insurance_fee: i128 = inst
-            .get::<_, InsuranceConfig>(&KEY_INSURANCE)
+        // Uses the `insurance_config` value hoisted from the upfront batch above.
+        let insurance_fee: i128 = insurance_config
             .filter(|c| c.enabled)
             .map(|c| effective_amount_after_fee * c.fee_bps as i128 / 10_000)
             .unwrap_or(0);
@@ -625,7 +630,8 @@ impl CrowdfundContract {
             .checked_add(effective_amount)
             .ok_or(ContractError::Overflow)?;
         let mut matched_amount = 0i128;
-        if let Some(config) = inst.get::<_, MatchingConfig>(&DataKey::MatchingConfig) {
+        // Uses `matching_config` hoisted from the upfront batch above.
+        if let Some(config) = matching_config {
             let match_amount = (effective_amount * config.match_ratio as i128) / 10_000;
             let total_matched: i128 = inst.get(&DataKey::TotalMatched).unwrap_or(0);
             let available_match = config.max_match - total_matched;
