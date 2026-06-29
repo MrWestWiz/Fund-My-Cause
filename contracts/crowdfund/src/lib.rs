@@ -78,8 +78,16 @@ pub use storage::{
     KEY_GOVERNANCE_CONFIG, KEY_GOVERNANCE_NONCE, KEY_EMERGENCY_PAUSE,
     // #605 Security Hardening
     KEY_REENTRANCY_LOCK,
-    // #704 Withdrawal streaming
-    KEY_STREAM,
+    // #698 Fee Mode
+    KEY_GROSS_TOTAL,
+    // #699 IPFS CID
+    KEY_IPFS_CID,
+    // #694 Soft-cap / stretch-goal
+    KEY_SOFT_CAP, KEY_STRETCH_GOAL,
+    // #695 Released amount tracking
+    KEY_RELEASED,
+    // #696 Pause timelock
+    KEY_PAUSE_TIMELOCK, KEY_UNPAUSE_AFTER,
 };
 pub use types::{
     CampaignAnalytics,
@@ -216,11 +224,15 @@ pub use types::{
     QfContributorInput,
     QfInputs,
     EventQfContribution,
-    // #703 Event schema versioning
-    EVENT_SCHEMA_VERSION,
-    // #704 Withdrawal streaming
-    StreamConfig,
-    EventStreamClaimed,
+    // #694 Soft-cap / stretch-goal
+    EventCapsConfigured,
+    // #696 Pause timelock
+    EventPausedWithTimelock,
+    // #697 Allow/deny list
+    EventAllowlisted,
+    EventAllowlistRemoved,
+    EventDenylisted,
+    EventDenylistRemoved,
 };
 pub use validation::*;
 
@@ -1498,8 +1510,7 @@ impl CrowdfundContract {
                 ("campaign", "refunded"),
                 EventRefunded {
                     contributor,
-                    amount,
-                    schema_version: EVENT_SCHEMA_VERSION,
+                    amount: refund_amount,
                 },
             );
         }
