@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express, { Express } from "express";
+import { applySecurityMiddleware } from './middleware/security.js';
 import pino from "pino";
 import { SorobanRPCClient } from "./rpc-client";
 import { HealthChecker } from "./health-checker";
@@ -16,6 +17,7 @@ const logger = pino({ level: LOG_LEVEL });
 
 // Express app
 const app: Express = express();
+applySecurityMiddleware(app);
 
 // Global state
 const rpcClient = new SorobanRPCClient(

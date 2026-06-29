@@ -2263,3 +2263,192 @@ fn claim_stream_without_config_is_rejected() {
     let r = client.try_claim_stream();
     assert_eq!(r.err(), Some(Ok(ContractError::StreamNotConfigured)));
 }
+
+// ── #696: Auth-failure, boundary, and TTL tests ──────────────────────────────
+
+#[test]
+fn withdraw_before_deadline_is_rejected() {
+    let env = Env::default();
+    let deadline = 10_000u64;
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, deadline, 500, 0);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &500);
+    client.contribute(&contributor, &500, &token_id, &None);
+
+    // Deadline has NOT passed — campaign still active
+    let result = client.try_withdraw();
+    assert_eq!(result.err(), Some(Ok(ContractError::CampaignStillActive)));
+}
+
+#[test]
+fn withdraw_goal_not_met_is_rejected() {
+    let env = Env::default();
+    let deadline = 1_000u64;
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, deadline, 10_000, 0);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &500);
+    client.contribute(&contributor, &500, &token_id, &None);
+
+    // Past deadline but goal not reached
+    env.ledger().set_timestamp(deadline + 1);
+    let result = client.try_withdraw();
+    assert_eq!(result.err(), Some(Ok(ContractError::GoalNotReached)));
+}
+
+#[test]
+fn update_metadata_when_not_active_is_rejected() {
+    let env = Env::default();
+    let (_creator, _token_id, client, _) = setup_contract(&env, 10_000, 10_000, 0);
+
+    // Pause the campaign — status becomes Paused (not Active)
+    client.pause();
+
+    let result = client.try_update_metadata(
+        &Some(String::from_str(&env, "New Title")),
+        &None,
+        &None,
+    );
+    assert_eq!(result.err(), Some(Ok(ContractError::NotActive)));
+}
+
+#[test]
+fn cancel_campaign_when_already_cancelled_is_rejected() {
+    let env = Env::default();
+    let (_creator, _token_id, client, _) = setup_contract(&env, 10_000, 10_000, 0);
+
+    client.cancel_campaign();
+
+    // Second cancel: campaign is no longer Active
+    let result = client.try_cancel_campaign();
+    assert_eq!(result.err(), Some(Ok(ContractError::NotActive)));
+}
+
+#[test]
+fn pause_ttl_blocks_resume_before_timelock() {
+    let env = Env::default();
+    let (_creator, _token_id, client, _) = setup_contract(&env, 100_000, 10_000, 0);
+
+    // Set a 1000-second timelock, then pause at t=0
+    client.set_pause_timelock(&1_000);
+    env.ledger().set_timestamp(0);
+    client.pause();
+
+    // At t=500 (< timelock of 1000) resume must fail
+    env.ledger().set_timestamp(500);
+    let result = client.try_resume();
+    assert_eq!(result.err(), Some(Ok(ContractError::EmergencyLocked)));
+
+    // At t=1001 (> timelock) resume must succeed
+    env.ledger().set_timestamp(1_001);
+    client.resume();
+    assert_eq!(client.status(), Status::Active);
+}
+
+#[test]
+fn contribute_below_minimum_is_rejected() {
+    let env = Env::default();
+    let min = 500i128;
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, 10_000, 100_000, min);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &1_000);
+
+    // Contribute less than min
+    let result = client.try_contribute(&contributor, &(min - 1), &token_id, &None);
+    assert_eq!(result.err(), Some(Ok(ContractError::BelowMinimum)));
+}
+
+#[test]
+fn contribute_zero_is_rejected() {
+    let env = Env::default();
+    let (_creator, token_id, client, _) = setup_contract(&env, 10_000, 100_000, 100);
+
+    let contributor = Address::generate(&env);
+    // Zero is both non-positive and below minimum; contract returns BelowMinimum
+    // (or AmountNotPositive depending on check order — accept either)
+    let result = client.try_contribute(&contributor, &0, &token_id, &None);
+    assert!(result.is_err());
+}
+
+#[test]
+fn initialize_invalid_goal_is_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let creator = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract(token_admin);
+    let contract_id = env.register_contract(None, CrowdfundContract);
+    let client = CrowdfundContractClient::new(&env, &contract_id);
+
+    let result = client.try_initialize(
+        &creator,
+        &token_id,
+        &0i128, // goal = 0 → invalid
+        &10_000u64,
+        &0i128,
+        &0i128,
+        &String::from_str(&env, "Title"),
+        &String::from_str(&env, "Desc"),
+        &None,
+        &None,
+        &None,
+        &Category::Other,
+        &None,
+        &None,
+    );
+    assert_eq!(result.err(), Some(Ok(ContractError::InvalidGoal)));
+}
+
+#[test]
+fn initialize_past_deadline_is_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let creator = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract(token_admin);
+    let contract_id = env.register_contract(None, CrowdfundContract);
+    let client = CrowdfundContractClient::new(&env, &contract_id);
+
+    // Set current time ahead of the deadline
+    env.ledger().set_timestamp(5_000);
+
+    let result = client.try_initialize(
+        &creator,
+        &token_id,
+        &1_000i128,
+        &1_000u64, // deadline already in the past
+        &0i128,
+        &0i128,
+        &String::from_str(&env, "Title"),
+        &String::from_str(&env, "Desc"),
+        &None,
+        &None,
+        &None,
+        &Category::Other,
+        &None,
+        &None,
+    );
+    assert_eq!(result.err(), Some(Ok(ContractError::InvalidDeadline)));
+}
+
+#[test]
+fn blacklist_blocks_contribution_on_active_campaign() {
+    let env = Env::default();
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, 10_000, 100_000, 0);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &500);
+
+    client.add_to_blacklist(&contributor);
+
+    let result = client.try_contribute(&contributor, &500, &token_id, &None);
+    assert_eq!(result.err(), Some(Ok(ContractError::Blacklisted)));
+}

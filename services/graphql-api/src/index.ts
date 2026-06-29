@@ -15,6 +15,7 @@ import { RateLimiterService } from "./services/rate-limiter.js";
 import { typeDefs } from "./schema.js";
 import { resolvers } from "./resolvers.js";
 import type { Context } from "./types.js";
+import { applySecurityMiddleware } from "./middleware/security.js";
 
 const PORT = process.env.GRAPHQL_PORT ? parseInt(process.env.GRAPHQL_PORT) : 4000;
 const NODE_ENV = process.env.NODE_ENV || "development";
@@ -48,6 +49,8 @@ async function startServer() {
     // Create Express app
     const app = express();
     const httpServer = createServer(app);
+
+    applySecurityMiddleware(app);
 
     // CORS configuration
     const corsOptions = {
